@@ -22,7 +22,7 @@ var commonBiomeMigrations: std.StringHashMap(ZonElement) = undefined;
 var commonRecipes: std.StringHashMap(ZonElement) = undefined;
 var commonModels: std.StringHashMap([]const u8) = undefined;
 var commonStructureBuildingBlocks: std.StringHashMap(ZonElement) = undefined;
-var commonBlueprints: std.StringHashMap(Blueprint) = undefined;
+var commonBlueprints: std.StringHashMap([]u8) = undefined;
 
 pub fn init() void {
 	biomes_zig.init();
@@ -176,7 +176,7 @@ pub fn readAllBlueprintFilesInAddons(
 	addons: main.List(std.fs.Dir),
 	addonNames: main.List([]const u8),
 	subPath: []const u8,
-	output: *std.StringHashMap(Blueprint),
+	output: *std.StringHashMap([]u8),
 ) void {
 	for(addons.items, addonNames.items) |addon, addonName| {
 		var dir = addon.openDir(subPath, .{.iterate = true}) catch |err| {
@@ -196,23 +196,15 @@ pub fn readAllBlueprintFilesInAddons(
 		}) |entry| {
 			if(entry.kind != .file) continue;
 			if(std.ascii.startsWithIgnoreCase(entry.basename, "_defaults")) continue;
-			if(!std.ascii.endsWithIgnoreCase(entry.basename, ".zon")) continue;
+			if(!std.ascii.endsWithIgnoreCase(entry.basename, ".blp")) continue;
 			if(std.ascii.startsWithIgnoreCase(entry.basename, "_migrations")) continue;
 
 			const stringId: []u8 = createAssetStringID(externalAllocator, addonName, entry.basename, entry.path);
-			var blueprint = Blueprint.init(externalAllocator);
-
 			const data = main.files.Dir.init(dir).read(externalAllocator, entry.path) catch |err| {
 				std.log.err("Could not open {s}/{s}: {s}", .{subPath, entry.path, @errorName(err)});
 				continue;
 			};
-
-			blueprint.load(data) catch |err| {
-				std.log.err("Could not load blueprint {s}: {s}", .{stringId, @errorName(err)});
-				continue;
-			};
-
-			output.put(stringId, blueprint) catch unreachable;
+			output.put(stringId, data) catch unreachable;
 		}
 	}
 }
@@ -301,7 +293,7 @@ pub fn readAssets(
 	recipes: *std.StringHashMap(ZonElement),
 	models: *std.StringHashMap([]const u8),
 	structureBuildingBlocks: *std.StringHashMap(ZonElement),
-	blueprints: *std.StringHashMap(Blueprint),
+	blueprints: *std.StringHashMap([]u8),
 ) void {
 	var addons = main.List(std.fs.Dir).init(main.stackAllocator);
 	defer addons.deinit();
@@ -479,9 +471,6 @@ pub fn loadWorldAssets(assetFolder: []const u8, blockPalette: *Palette, biomePal
 	);
 	errdefer unloadAssets();
 
-	structure_building_blocks.registerSBB(&structureBuildingBlocks);
-	structure_building_blocks.registerBlueprints(&blueprints);
-
 	migrations_zig.registerAll(.block, &blockMigrations);
 	migrations_zig.apply(.block, blockPalette);
 
@@ -533,6 +522,9 @@ pub fn loadWorldAssets(assetFolder: []const u8, blockPalette: *Palette, biomePal
 	while(iterator.next()) |entry| {
 		registerRecipesFromZon(entry.value_ptr.*);
 	}
+
+	try structure_building_blocks.registerBlueprints(&blueprints);
+	try structure_building_blocks.registerSBB(&structureBuildingBlocks);
 
 	// Biomes:
 	var i: u32 = 0;
