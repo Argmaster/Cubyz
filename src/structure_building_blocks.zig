@@ -1,11 +1,13 @@
 const std = @import("std");
 
-// const main = @import("root");
 const main = @import("main.zig");
 const terrain = main.server.terrain;
 const ZonElement = main.ZonElement;
 const Blueprint = main.blueprint.Blueprint;
 const List = main.List;
+const Neighbor = main.chunk.Neighbor;
+const Block = main.blocks.Block;
+const parseBlock = main.blocks.parseBlock;
 
 var arena = main.heap.NeverFailingArenaAllocator.init(main.globalAllocator);
 const cubyz_allocator = arena.allocator();
@@ -14,19 +16,144 @@ const std_allocator = cubyz_allocator.allocator;
 var structureCache: ?std.StringHashMapUnmanaged(StructureBuildingBlock) = null;
 var blueprintCache: ?std.StringHashMapUnmanaged(Blueprint) = null;
 
-const StructureBuildingBlock = struct {
-	stringId: []const u8,
-	blueprint: []const u8,
-	children: Children,
+const originBlockStringId = "cubyz:sbb/origin";
+var originBlockNumericId: u16 = 0;
 
-	fn initFromZon(stringId: []const u8, zon: ZonElement) StructureBuildingBlock {
-		return .{
-			.stringId = cubyz_allocator.dupe(u8, stringId),
-			.blueprint = zon.get([]const u8, "blueprint", ""),
-			.children = Children.initFromZon(stringId, zon.getChild("children")),
-		};
+const childrenBlockStringId = [_][]const u8{
+	"cubyz:sbb/child/aqua",
+	"cubyz:sbb/child/black",
+	"cubyz:sbb/child/blue",
+	"cubyz:sbb/child/brown",
+	"cubyz:sbb/child/crimson",
+	"cubyz:sbb/child/cyan",
+	"cubyz:sbb/child/dark_grey",
+	"cubyz:sbb/child/green",
+	"cubyz:sbb/child/grey",
+	"cubyz:sbb/child/indigo",
+	"cubyz:sbb/child/lime",
+	"cubyz:sbb/child/magenta",
+	"cubyz:sbb/child/orange",
+	"cubyz:sbb/child/pink",
+	"cubyz:sbb/child/purple",
+	"cubyz:sbb/child/red",
+	"cubyz:sbb/child/violet",
+	"cubyz:sbb/child/viridian",
+	"cubyz:sbb/child/white",
+	"cubyz:sbb/child/yellow",
+};
+var childrenBlockNumericId = [_]u16{
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+};
+
+const StructureBlock = struct {
+	x: u32,
+	y: u32,
+	z: u32,
+	block: Block,
+
+	pub fn direction(self: StructureBlock) Neighbor {
+		return @enumFromInt(self.block.data);
 	}
 };
+
+const StructureBuildingBlock = struct {
+	stringId: []const u8,
+	blueprintId: []const u8,
+	children: Children,
+
+	blueprintRef: ?*Blueprint,
+	originBlock: ?StructureBlock,
+	childrenBlocks: List(StructureBlock),
+
+	fn initFromZon(stringId: []const u8, zon: ZonElement) StructureBuildingBlock {
+		const blueprintId = zon.get(?[]const u8, "blueprint", null);
+		if(blueprintId == null) {
+			std.log.err("[{s}] Missing blueprint field.", .{stringId});
+			return undefined;
+		}
+		const blueprintRef = blueprintCache.?.getEntry(blueprintId.?);
+		if(blueprintRef == null) {
+			std.log.err("[{s}] Could not find blueprint '{s}'.", .{stringId, blueprintId.?});
+			return undefined;
+		}
+
+		var self = StructureBuildingBlock{
+			.stringId = cubyz_allocator.dupe(u8, stringId),
+			.blueprintId = cubyz_allocator.dupe(u8, blueprintId.?),
+			.children = Children.initFromZon(stringId, zon.getChild("children")),
+			.blueprintRef = if(blueprintRef) |bp| bp.value_ptr else null,
+			.originBlock = null,
+			.childrenBlocks = List(StructureBlock).init(cubyz_allocator),
+		};
+		if(blueprintRef != null) self.findOriginAndChildrenBlocks();
+
+		return self;
+	}
+
+	fn findOriginAndChildrenBlocks(self: *StructureBuildingBlock) void {
+		var blockIndex: usize = 0;
+		const blueprint = self.blueprintRef.?;
+
+		for(0..blueprint.sizeX) |x| {
+			for(0..blueprint.sizeY) |y| {
+				for(0..blueprint.sizeZ) |z| {
+					const block = blueprint.blocks.items[blockIndex];
+					if(isOriginBlock(block)) {
+						if(self.originBlock != null) {
+							std.log.err("[{s}] Multiple origin blocks found.", .{self.stringId});
+							return;
+						}
+						self.originBlock = StructureBlock{
+							.x = @intCast(x),
+							.y = @intCast(y),
+							.z = @intCast(z),
+							.block = block,
+						};
+					} else if(isChildBlock(block)) {
+						self.childrenBlocks.append(StructureBlock{
+							.x = @intCast(x),
+							.y = @intCast(y),
+							.z = @intCast(z),
+							.block = block,
+						});
+						break;
+					}
+					blockIndex += 1;
+				}
+			}
+		}
+	}
+};
+
+pub inline fn isChildBlock(block: Block) bool {
+	for(childrenBlockNumericId) |numericId| {
+		if(block.typ == numericId) return true;
+	}
+	return false;
+}
+
+pub inline fn isOriginBlock(block: Block) bool {
+	return block.typ == originBlockNumericId;
+}
 
 const Children = struct {
 	aqua: ?List(Child),
@@ -87,7 +214,7 @@ fn initChildListFromZon(comptime childName: []const u8, stringId: []const u8, zo
 		std.log.warn("[{s}->{s}] Empty children list.", .{stringId, childName});
 	}
 	for(zon.array.items, 0..) |entry, i| {
-		list.appendAssumeCapacity(Child.initFromZon(childName, stringId,i, entry));
+		list.appendAssumeCapacity(Child.initFromZon(childName, stringId, i, entry));
 	}
 	return list;
 }
@@ -123,6 +250,11 @@ pub fn registerSBB(structures: *std.StringHashMap(ZonElement)) !void {
 		return error.AlreadyRegistered;
 	}
 
+	originBlockNumericId = parseBlock(originBlockStringId).typ;
+	for(0..childrenBlockNumericId.len) |i| {
+		childrenBlockNumericId[i] = parseBlock(childrenBlockStringId[i]).typ;
+	}
+
 	structureCache = .{};
 	structureCache.?.ensureTotalCapacity(std_allocator, structures.count()) catch unreachable;
 
@@ -149,9 +281,9 @@ pub fn registerBlueprints(blueprints: *std.StringHashMap([]u8)) !void {
 		var blueprint = Blueprint.init(cubyz_allocator);
 
 		blueprint.load(entry.value_ptr.*) catch |err| {
-				std.log.err("Could not load blueprint {s}: {s}", .{stringId, @errorName(err)});
-				continue;
-			};
+			std.log.err("Could not load blueprint {s}: {s}", .{stringId, @errorName(err)});
+			continue;
+		};
 
 		blueprintCache.?.put(std_allocator, cubyz_allocator.dupe(u8, stringId), blueprint) catch unreachable;
 		std.log.info("Registered blueprint: {s}", .{stringId});
