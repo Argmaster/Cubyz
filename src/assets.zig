@@ -3,6 +3,7 @@ const std = @import("std");
 const blocks_zig = @import("blocks.zig");
 const items_zig = @import("items.zig");
 const migrations_zig = @import("migrations.zig");
+const structure_building_blocks = @import("structure_building_blocks.zig");
 const ZonElement = @import("zon.zig").ZonElement;
 const main = @import("main.zig");
 const biomes_zig = main.server.terrain.biomes;
@@ -18,6 +19,7 @@ var commonBiomes: std.StringHashMap(ZonElement) = undefined;
 var commonBiomeMigrations: std.StringHashMap(ZonElement) = undefined;
 var commonRecipes: std.StringHashMap(ZonElement) = undefined;
 var commonModels: std.StringHashMap([]const u8) = undefined;
+var commonStructureBuildingBlocks: std.StringHashMap(ZonElement) = undefined;
 
 pub fn init() void {
 	biomes_zig.init();
@@ -33,6 +35,7 @@ pub fn init() void {
 	commonBiomeMigrations = .init(arenaAllocator.allocator);
 	commonRecipes = .init(arenaAllocator.allocator);
 	commonModels = .init(arenaAllocator.allocator);
+	commonStructureBuildingBlocks = .init(arenaAllocator.allocator);
 
 	readAssets(
 		arenaAllocator,
@@ -45,6 +48,7 @@ pub fn init() void {
 		&commonBlockMigrations,
 		&commonRecipes,
 		&commonModels,
+		&commonStructureBuildingBlocks,
 	);
 
 	std.log.info(
@@ -221,6 +225,7 @@ pub fn readAssets(
 	biomeMigrations: *std.StringHashMap(ZonElement),
 	recipes: *std.StringHashMap(ZonElement),
 	models: *std.StringHashMap([]const u8),
+	structureBuildingBlocks: *std.StringHashMap(ZonElement),
 ) void {
 	var addons = main.List(std.fs.Dir).init(main.stackAllocator);
 	defer addons.deinit();
@@ -258,6 +263,7 @@ pub fn readAssets(
 	readAllZonFilesInAddons(externalAllocator, addons, addonNames, "biomes", true, biomes, biomeMigrations);
 	readAllZonFilesInAddons(externalAllocator, addons, addonNames, "recipes", false, recipes, null);
 	readAllObjFilesInAddonsHashmap(externalAllocator, addons, addonNames, "models", models);
+	readAllZonFilesInAddons(externalAllocator, addons, addonNames, "sbb", true, structureBuildingBlocks, null);
 }
 
 fn registerItem(assetFolder: []const u8, id: []const u8, zon: ZonElement) !*items_zig.BaseItem {
@@ -375,6 +381,8 @@ pub fn loadWorldAssets(assetFolder: []const u8, blockPalette: *Palette, biomePal
 	defer recipes.clearAndFree();
 	var models = commonModels.cloneWithAllocator(main.stackAllocator.allocator) catch unreachable;
 	defer models.clearAndFree();
+	var structureBuildingBlocks = commonStructureBuildingBlocks.cloneWithAllocator(main.stackAllocator.allocator) catch unreachable;
+	defer structureBuildingBlocks.clearAndFree();
 
 	readAssets(
 		arenaAllocator,
@@ -387,8 +395,11 @@ pub fn loadWorldAssets(assetFolder: []const u8, blockPalette: *Palette, biomePal
 		&biomeMigrations,
 		&recipes,
 		&models,
+		&structureBuildingBlocks,
 	);
 	errdefer unloadAssets();
+
+	structure_building_blocks.registerSBB(&structureBuildingBlocks);
 
 	migrations_zig.registerAll(.block, &blockMigrations);
 	migrations_zig.apply(.block, blockPalette);
@@ -494,6 +505,7 @@ pub fn unloadAssets() void { // MARK: unloadAssets()
 	if(!loadedAssets) return;
 	loadedAssets = false;
 
+	structure_building_blocks.reset();
 	blocks_zig.reset();
 	items_zig.reset();
 	biomes_zig.reset();
