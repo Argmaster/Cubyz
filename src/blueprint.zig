@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const main = @import("main.zig");
+const structure_building_blocks = main.structure_building_blocks;
 const Compression = main.utils.Compression;
 const ZonElement = @import("zon.zig").ZonElement;
 const vec = main.vec;
@@ -9,6 +10,7 @@ const Vec3i = vec.Vec3i;
 const Block = main.blocks.Block;
 const NeverFailingAllocator = main.heap.NeverFailingAllocator;
 const User = main.server.User;
+const ServerChunk = main.chunk.ServerChunk;
 
 pub const blueprintVersion = 0;
 pub const GameIdToBlueprintIdMapType = std.AutoHashMap(u16, u16);
@@ -109,6 +111,30 @@ pub const Blueprint = struct {
 		}
 		return new;
 	}
+	pub fn rotateZ(self: *@This()) void {
+		var oldIndex: usize = 0;
+
+		for(0..self.sizeX) |y| {
+			for(0..self.sizeY) |x| {
+				for(0..self.sizeZ) |z| {
+					const newIndex = z + y*self.sizeZ + x*self.sizeZ*self.sizeY;
+
+					const oldBlock = self.blocks.items[oldIndex];
+					const newBlock = self.blocks.items[newIndex];
+
+					self.blocks.items[newIndex] = oldBlock.rotateZ();
+					self.blocks.items[oldIndex] = newBlock.rotateZ();
+
+					oldIndex += 1;
+				}
+			}
+		}
+
+		const newSizeX = self.sizeY;
+		const newSizeY = self.sizeX;
+		self.sizeX = newSizeX;
+		self.sizeY = newSizeY;
+	}
 	pub fn capture(self: *@This(), pos1: Vec3i, pos2: Vec3i) ?struct {x: i32, y: i32, z: i32, message: []const u8} {
 		self.clear();
 
@@ -149,6 +175,46 @@ pub const Blueprint = struct {
 			}
 		}
 		return null;
+	}
+	pub const PasteMode = enum {all, noAir, replaceAir};
+
+	pub fn pasteInGeneration(self: @This(), pos: Vec3i, chunk: *ServerChunk, mode: PasteMode) void {
+		const startX = pos[0];
+		const startY = pos[1];
+		const startZ = pos[2];
+
+		var blockIndex: usize = 0;
+
+		for(0..self.sizeX) |offsetX| {
+			const worldX = startX + @as(i32, @intCast(offsetX));
+
+			for(0..self.sizeY) |offsetY| {
+				const worldY = startY + @as(i32, @intCast(offsetY));
+
+				for(0..self.sizeZ) |offsetZ| {
+					defer blockIndex += 1;
+					const worldZ = startZ + @as(i32, @intCast(offsetZ));
+
+					const block = self.blocks.items[blockIndex];
+					if(structure_building_blocks.isOriginBlock(block) or structure_building_blocks.isChildBlock(block)) continue;
+					if(!chunk.liesInChunk(worldX, worldY, worldZ)) continue;
+
+					switch(mode) {
+						.all => chunk.updateBlockInGeneration(worldX, worldY, worldZ, block),
+						.noAir => {
+							if(block.typ != 0) {
+								chunk.updateBlockInGeneration(worldX, worldY, worldZ, block);
+							}
+						},
+						.replaceAir => {
+							if(block.typ != 0 and chunk.getBlock(worldX, worldY, worldZ).typ == 0) {
+								chunk.updateBlockInGeneration(worldX, worldY, worldZ, block);
+							}
+						},
+					}
+				}
+			}
+		}
 	}
 	pub fn paste(self: @This(), pos: Vec3i) void {
 		const startX = pos[0];

@@ -65,12 +65,12 @@ var childrenBlockNumericId = [_]u16{
 };
 
 const StructureBlock = struct {
-	x: u32,
-	y: u32,
-	z: u32,
+	x: i32,
+	y: i32,
+	z: i32,
 	block: Block,
 
-	pub fn direction(self: StructureBlock) Neighbor {
+	pub inline fn direction(self: StructureBlock) Neighbor {
 		return @enumFromInt(self.block.data);
 	}
 };
@@ -110,6 +110,8 @@ const StructureBuildingBlock = struct {
 	}
 
 	fn findOriginAndChildrenBlocks(self: *StructureBuildingBlock) void {
+		std.debug.assert(self.blueprintRef != null);
+
 		var blockIndex: usize = 0;
 		const blueprint = self.blueprintRef.?;
 
@@ -120,14 +122,14 @@ const StructureBuildingBlock = struct {
 					if(isOriginBlock(block)) {
 						if(self.originBlock != null) {
 							std.log.err("[{s}] Multiple origin blocks found.", .{self.stringId});
-							return;
+						} else {
+							self.originBlock = StructureBlock{
+								.x = @intCast(x),
+								.y = @intCast(y),
+								.z = @intCast(z),
+								.block = block,
+							};
 						}
-						self.originBlock = StructureBlock{
-							.x = @intCast(x),
-							.y = @intCast(y),
-							.z = @intCast(z),
-							.block = block,
-						};
 					} else if(isChildBlock(block)) {
 						self.childrenBlocks.append(StructureBlock{
 							.x = @intCast(x),
@@ -135,23 +137,25 @@ const StructureBuildingBlock = struct {
 							.z = @intCast(z),
 							.block = block,
 						});
-						break;
 					}
 					blockIndex += 1;
 				}
 			}
 		}
+		if(self.originBlock == null) {
+			std.log.err("[{s}] No origin block found.", .{self.stringId});
+		}
 	}
 };
 
-pub inline fn isChildBlock(block: Block) bool {
+pub fn isChildBlock(block: Block) bool {
 	for(childrenBlockNumericId) |numericId| {
 		if(block.typ == numericId) return true;
 	}
 	return false;
 }
 
-pub inline fn isOriginBlock(block: Block) bool {
+pub fn isOriginBlock(block: Block) bool {
 	return block.typ == originBlockNumericId;
 }
 
@@ -251,8 +255,10 @@ pub fn registerSBB(structures: *std.StringHashMap(ZonElement)) !void {
 	}
 
 	originBlockNumericId = parseBlock(originBlockStringId).typ;
+	std.log.info("Origin block numeric id: {}", .{originBlockNumericId});
 	for(0..childrenBlockNumericId.len) |i| {
 		childrenBlockNumericId[i] = parseBlock(childrenBlockStringId[i]).typ;
+		std.log.info("Child block '{s}'' numeric id: {}", .{childrenBlockStringId[i], childrenBlockNumericId[i]});
 	}
 
 	structureCache = .{};
@@ -288,6 +294,10 @@ pub fn registerBlueprints(blueprints: *std.StringHashMap([]u8)) !void {
 		blueprintCache.?.put(std_allocator, cubyz_allocator.dupe(u8, stringId), blueprint) catch unreachable;
 		std.log.info("Registered blueprint: {s}", .{stringId});
 	}
+}
+
+pub fn getByStringId(stringId: []const u8) ?StructureBuildingBlock {
+	return structureCache.?.get(stringId);
 }
 
 pub fn reset() void {

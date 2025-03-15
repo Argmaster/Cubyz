@@ -146,6 +146,13 @@ pub const Neighbor = enum(u3) { // MARK: Neighbor
 		const arr = [_]Neighbor{.dirUp, .dirDown, .dirPosY, .dirNegY, .dirNegX, .dirPosX};
 		return arr[@intFromEnum(self)];
 	}
+
+	const Axis = enum {x, y, z};
+
+	pub inline fn axis(self: Neighbor) Axis {
+		const axes = [_]Axis{.z, .z, .x, .x, .y, .y};
+		return axes[self.toInt()];
+	}
 };
 
 /// Gets the index of a given position inside this chunk.
