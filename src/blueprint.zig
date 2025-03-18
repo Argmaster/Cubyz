@@ -43,13 +43,35 @@ pub const Blueprint = struct {
 	}
 	pub fn rotateZ(self: *@This(), allocator: NeverFailingAllocator, angle: Degrees) Blueprint {
 		var new = Blueprint.init(main.stackAllocator);
-		new.blocks = .init(allocator, self.blocks.depth, self.blocks.width, self.blocks.height);
+		new.blocks = switch(angle) {
+			.@"0", .@"180" => .init(allocator, self.blocks.width, self.blocks.depth, self.blocks.height),
+			.@"90", .@"270" => .init(allocator, self.blocks.depth, self.blocks.width, self.blocks.height),
+		};
 
-		for(0..self.blocks.width) |x| {
-			for(0..self.blocks.depth) |y| {
+		const a: f32 = (std.math.pi/2.0) * @as(f32, @floatFromInt(@intFromEnum(angle)));
+		const sin: f32 = @sin(a);
+		const cos: f32 = @cos(a);
+
+		for(0..self.blocks.width) |i| {
+			for(0..self.blocks.depth) |j| {
 				for(0..self.blocks.height) |z| {
-					const block = self.blocks.get(x, y, z);
-					new.blocks.set(y, new.blocks.depth - x - 1, z, block.rotateZ(angle));
+					const block = self.blocks.get(i, j, z);
+
+					const x: f32 = @floatFromInt(i);
+					const y: f32 = @floatFromInt(j);
+
+					var newX: i64 = @intFromFloat(@round(x*cos - y*sin));
+					var newY: i64 = @intFromFloat(@round(x*sin + y*cos));
+
+					if(newX < 0) newX = @as(i64, @intCast(new.blocks.width)) + newX;
+					if(newY < 0) newY = @as(i64, @intCast(new.blocks.depth)) + newY;
+
+					std.debug.assert(newX >= 0);
+					std.debug.assert(newX < @as(i64, @intCast(new.blocks.width)));
+					std.debug.assert(newY >= 0);
+					std.debug.assert(newY < @as(i64, @intCast(new.blocks.depth)));
+
+					new.blocks.set(@intCast(newX), @intCast(newY), z, block.rotateZ(angle));
 				}
 			}
 		}
