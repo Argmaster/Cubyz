@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const main = @import("main.zig");
+const structure_building_blocks = main.structure_building_blocks;
 const Compression = main.utils.Compression;
 const ZonElement = @import("zon.zig").ZonElement;
 const vec = main.vec;
@@ -10,6 +11,8 @@ const Array3D = main.utils.Array3D;
 const Block = main.blocks.Block;
 const NeverFailingAllocator = main.heap.NeverFailingAllocator;
 const User = main.server.User;
+const ServerChunk = main.chunk.ServerChunk;
+const Degrees = main.rotation.Degrees;
 
 pub const GameIdToBlueprintIdMapType = std.AutoHashMap(u16, u16);
 const BlockIdSizeType = u32;
@@ -38,6 +41,21 @@ pub const Blueprint = struct {
 		new.blocks = self.blocks.clone(allocator);
 		return new;
 	}
+	pub fn rotateZ(self: *@This(), allocator: NeverFailingAllocator, angle: Degrees) Blueprint {
+		var new = Blueprint.init(main.stackAllocator);
+		new.blocks = .init(allocator, self.blocks.depth, self.blocks.width, self.blocks.height);
+
+		for(0..self.blocks.width) |x| {
+			for(0..self.blocks.depth) |y| {
+				for(0..self.blocks.height) |z| {
+					const block = self.blocks.get(x, y, z);
+					new.blocks.set(y, new.blocks.depth - x - 1, z, block.rotateZ(angle));
+				}
+			}
+		}
+		return new;
+	}
+
 	const CaptureResult = union(enum) {
 		success: Blueprint,
 		failure: struct {x: i32, y: i32, z: i32, message: []const u8},
@@ -79,6 +97,43 @@ pub const Blueprint = struct {
 			}
 		}
 		return .{.success = self};
+	}
+	pub const PasteMode = enum {all, noAir, replaceAir};
+
+	pub fn pasteInGeneration(self: @This(), pos: Vec3i, chunk: *ServerChunk, mode: PasteMode) void {
+		const startX = pos[0];
+		const startY = pos[1];
+		const startZ = pos[2];
+
+		for(0..self.blocks.width) |x| {
+			const worldX = startX + @as(i32, @intCast(x));
+
+			for(0..self.blocks.depth) |y| {
+				const worldY = startY + @as(i32, @intCast(y));
+
+				for(0..self.blocks.height) |z| {
+					const worldZ = startZ + @as(i32, @intCast(z));
+
+					const block = self.blocks.get(x, y, z);
+					if(structure_building_blocks.isOriginBlock(block) or structure_building_blocks.isChildBlock(block)) continue;
+					if(!chunk.liesInChunk(worldX, worldY, worldZ)) continue;
+
+					switch(mode) {
+						.all => chunk.updateBlockInGeneration(worldX, worldY, worldZ, block),
+						.noAir => {
+							if(block.typ != 0) {
+								chunk.updateBlockInGeneration(worldX, worldY, worldZ, block);
+							}
+						},
+						.replaceAir => {
+							if(block.typ != 0 and chunk.getBlock(worldX, worldY, worldZ).typ == 0) {
+								chunk.updateBlockInGeneration(worldX, worldY, worldZ, block);
+							}
+						},
+					}
+				}
+			}
+		}
 	}
 	pub fn paste(self: Blueprint, pos: Vec3i) void {
 		const startX = pos[0];
