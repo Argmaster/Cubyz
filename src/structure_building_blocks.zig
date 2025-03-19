@@ -78,7 +78,7 @@ var rotatedBlueprintCacheMutex: std.Thread.Mutex = .{};
 const originBlockStringId = "cubyz:sbb/origin";
 var originBlockNumericId: u16 = 0;
 
-const maxRotationCacheSize: usize = 384;
+const maxRotationCacheSize: usize = 1024;
 
 const childrenBlockStringId = [_][]const u8{
 	"cubyz:sbb/child/aqua",
