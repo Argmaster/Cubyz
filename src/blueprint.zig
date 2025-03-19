@@ -60,11 +60,11 @@ pub const Blueprint = struct {
 					const x: f32 = @floatFromInt(i);
 					const y: f32 = @floatFromInt(j);
 
-					var newX: i64 = @intFromFloat(@round(x*cos - y*sin));
-					var newY: i64 = @intFromFloat(@round(x*sin + y*cos));
+					var newX: i64 = @intFromFloat(@round((x + 1)*cos - (y + 1)*sin));
+					var newY: i64 = @intFromFloat(@round((x + 1)*sin + (y + 1)*cos));
 
-					if(newX < 0) newX = @as(i64, @intCast(new.blocks.width)) + newX;
-					if(newY < 0) newY = @as(i64, @intCast(new.blocks.depth)) + newY;
+					newX = if(newX < 0) @as(i64, @intCast(new.blocks.width)) + newX else newX - 1;
+					newY = if(newY < 0) @as(i64, @intCast(new.blocks.depth)) + newY else newY - 1;
 
 					std.debug.assert(newX >= 0);
 					std.debug.assert(newX < @as(i64, @intCast(new.blocks.width)));
