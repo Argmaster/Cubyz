@@ -9,6 +9,8 @@ const ZonElement = main.ZonElement;
 const Neighbor = main.chunk.Neighbor;
 const ServerChunk = main.chunk.ServerChunk;
 const NeverFailingAllocator = main.heap.NeverFailingAllocator;
+const parseBlock = main.blocks.parseBlock;
+const StructureInfo = main.structure_building_blocks.StructureInfo;
 
 pub var structures: ?std.StringHashMap(ZonElement) = null;
 
@@ -30,7 +32,7 @@ pub fn loadModel(arenaAllocator: NeverFailingAllocator, parameters: ZonElement) 
 }
 
 pub fn generate(self: *SBBGen, x: i32, y: i32, z: i32, chunk: *ServerChunk, _: CaveMapView, seed: *u64, _: bool) void {
-	placeSbb(self, self.structure, x, y, z, Neighbor.dirUp, chunk, seed);
+	placeSbb(self, self.structure, x, y, z - 1, Neighbor.dirUp, chunk, seed);
 }
 
 fn placeSbb(self: *SBBGen, structureId: []const u8, x: i32, y: i32, z: i32, placementDirection: Neighbor, chunk: *ServerChunk, seed: *u64) void {
@@ -40,35 +42,27 @@ fn placeSbb(self: *SBBGen, structureId: []const u8, x: i32, y: i32, z: i32, plac
 		return;
 	}
 	const structure = structureNullable.?;
-	const blueprintRef = structure.blueprintRef orelse {
-		std.log.err("Blueprint '{s}' not found.", .{structureId});
-		return;
-	};
-	const origin = structure.originBlock orelse {
-		std.log.err("Blueprint '{s}' has no detected origin block", .{structureId});
-		return;
-	};
-
+	const origin = structure.info.originBlock;
 	const rotationCount = alignDirections(origin.direction(), placementDirection) catch |err| {
 		std.log.err("Could not align directions {s} and {s} error: {s}", .{@tagName(origin.direction()), @tagName(placementDirection), @errorName(err)});
 		return;
 	};
-	var rotated = blueprintRef.rotateZ(main.stackAllocator, @enumFromInt(rotationCount));
-	defer rotated.deinit(main.stackAllocator);
+	const rotated = structure.getRotatedBlueprint(@enumFromInt(rotationCount));
+	defer rotated.decRef();
+	const rotatedOrigin = rotated.info.originBlock;
 
-	const directionReverse = origin.direction();
+	const pasteX: i32 = x - rotatedOrigin.x - placementDirection.relX();
+	const pasteY: i32 = y - rotatedOrigin.y - placementDirection.relY();
+	const pasteZ: i32 = z - rotatedOrigin.z - placementDirection.relZ();
 
-	for(structure.childrenBlocks.items) |childBlock| {
+	rotated.blueprint.pasteInGeneration(.{pasteX, pasteY, pasteZ}, chunk, self.placeMode);
+
+	for(rotated.info.childrenBlocks.items) |childBlock| {
 		const childNullable = structure.children.pickChild(childBlock.block, seed);
 		if(childNullable) |child| {
-			placeSbb(self, child.structure, x + childBlock.x, y + childBlock.y, z + childBlock.z, childBlock.direction(), chunk, seed);
+			placeSbb(self, child.structure, pasteX + childBlock.x, pasteY + childBlock.y, pasteZ + childBlock.z, childBlock.direction(), chunk, seed);
 		}
 	}
-
-	const pasteX = x - origin.x - directionReverse.relX();
-	const pasteY = y - origin.y - directionReverse.relY();
-	const pasteZ = z - origin.z - directionReverse.relZ();
-	rotated.pasteInGeneration(.{pasteX, pasteY, pasteZ}, chunk, self.placeMode);
 }
 
 fn alignDirections(input: Neighbor, desired: Neighbor) !usize {

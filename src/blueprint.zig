@@ -33,7 +33,7 @@ pub const Blueprint = struct {
 	pub fn init(allocator: NeverFailingAllocator) Blueprint {
 		return .{.blocks = .init(allocator, 0, 0, 0)};
 	}
-	pub fn deinit(self: *Blueprint, allocator: NeverFailingAllocator) void {
+	pub fn deinit(self: Blueprint, allocator: NeverFailingAllocator) void {
 		self.blocks.deinit(allocator);
 	}
 	pub fn clone(self: *Blueprint, allocator: NeverFailingAllocator) Blueprint {
@@ -41,14 +41,14 @@ pub const Blueprint = struct {
 		new.blocks = self.blocks.clone(allocator);
 		return new;
 	}
-	pub fn rotateZ(self: *@This(), allocator: NeverFailingAllocator, angle: Degrees) Blueprint {
-		var new = Blueprint.init(main.stackAllocator);
+	pub fn rotateZ(self: Blueprint, allocator: NeverFailingAllocator, angle: Degrees) Blueprint {
+		var new = Blueprint.init(allocator);
 		new.blocks = switch(angle) {
 			.@"0", .@"180" => .init(allocator, self.blocks.width, self.blocks.depth, self.blocks.height),
 			.@"90", .@"270" => .init(allocator, self.blocks.depth, self.blocks.width, self.blocks.height),
 		};
 
-		const a: f32 = (std.math.pi/2.0) * @as(f32, @floatFromInt(@intFromEnum(angle)));
+		const a: f32 = (std.math.pi/2.0)*@as(f32, @floatFromInt(@intFromEnum(angle)));
 		const sin: f32 = @sin(a);
 		const cos: f32 = @cos(a);
 
@@ -122,7 +122,7 @@ pub const Blueprint = struct {
 	}
 	pub const PasteMode = enum {all, noAir, replaceAir};
 
-	pub fn pasteInGeneration(self: @This(), pos: Vec3i, chunk: *ServerChunk, mode: PasteMode) void {
+	pub fn pasteInGeneration(self: Blueprint, pos: Vec3i, chunk: *ServerChunk, mode: PasteMode) void {
 		const startX = pos[0];
 		const startY = pos[1];
 		const startZ = pos[2];
@@ -135,23 +135,15 @@ pub const Blueprint = struct {
 
 				for(0..self.blocks.height) |z| {
 					const worldZ = startZ + @as(i32, @intCast(z));
+					if(!chunk.liesInChunk(worldX, worldY, worldZ)) continue;
 
 					const block = self.blocks.get(x, y, z);
 					if(structure_building_blocks.isOriginBlock(block) or structure_building_blocks.isChildBlock(block)) continue;
-					if(!chunk.liesInChunk(worldX, worldY, worldZ)) continue;
 
-					switch(mode) {
+					sw: switch(mode) {
 						.all => chunk.updateBlockInGeneration(worldX, worldY, worldZ, block),
-						.noAir => {
-							if(block.typ != 0) {
-								chunk.updateBlockInGeneration(worldX, worldY, worldZ, block);
-							}
-						},
-						.replaceAir => {
-							if(block.typ != 0 and chunk.getBlock(worldX, worldY, worldZ).typ == 0) {
-								chunk.updateBlockInGeneration(worldX, worldY, worldZ, block);
-							}
-						},
+						.noAir => if(block.typ != 0) continue :sw .all,
+						.replaceAir => if(block.typ != 0 and chunk.getBlock(worldX, worldY, worldZ).typ == 0) continue :sw .all,
 					}
 				}
 			}

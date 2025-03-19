@@ -22,12 +22,12 @@ pub fn execute(args: []const u8, source: *User) void {
 	defer source.mutex.unlock();
 
 	if(source.commandData.clipboard == null) {
-        source.sendMessage("#ff0000Error: No clipboard content to rotate.", .{});
-    }
-    var current = source.commandData.clipboard.?;
-    source.commandData.clipboard = null;
-    defer current.deinit(main.globalAllocator);
+		source.sendMessage("#ff0000Error: No clipboard content to rotate.", .{});
+	}
+	var current = source.commandData.clipboard.?;
+	source.commandData.clipboard = null;
+	defer current.deinit(main.globalAllocator);
 
-    const rotated = current.rotateZ(main.globalAllocator, .@"90");
-    source.commandData.clipboard = rotated;
+	const rotated = current.rotateZ(main.globalAllocator, .@"90");
+	source.commandData.clipboard = rotated;
 }
