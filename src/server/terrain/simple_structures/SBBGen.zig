@@ -1,7 +1,6 @@
 const std = @import("std");
 
 const main = @import("root");
-//const main = @import("../../../main.zig");
 const CaveMapView = main.server.terrain.CaveMap.CaveMapView;
 const structure_building_blocks = main.structure_building_blocks;
 const Blueprint = main.blueprint.Blueprint;
