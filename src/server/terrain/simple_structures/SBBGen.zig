@@ -4,11 +4,14 @@ const main = @import("root");
 const CaveMapView = main.server.terrain.CaveMap.CaveMapView;
 const structure_building_blocks = main.structure_building_blocks;
 const Blueprint = main.blueprint.Blueprint;
+const SubstitutionMap = main.blueprint.SubstitutionMap;
 const ZonElement = main.ZonElement;
 const Neighbor = main.chunk.Neighbor;
 const ServerChunk = main.chunk.ServerChunk;
 const NeverFailingAllocator = main.heap.NeverFailingAllocator;
 const parseBlock = main.blocks.parseBlock;
+const hashInt = main.utils.hashInt;
+const hashCombine = main.utils.hashCombine;
 const StructureInfo = main.structure_building_blocks.StructureInfo;
 
 pub var structures: ?std.StringHashMap(ZonElement) = null;
@@ -20,14 +23,60 @@ const SBBGen = @This();
 
 structure: []const u8,
 placeMode: Blueprint.PasteMode,
+substitutions: ?SubstitutionMap = null,
+
+pub fn getHash(self: SBBGen) u64 {
+	var result = std.hash.Wyhash.hash(@intFromEnum(self.placeMode), self.structure);
+	if(self.substitutions) |substitutions| {
+		var iterator = substitutions.iterator();
+		while(iterator.next()) |entry| {
+			result = hashCombine(result, hashCombine(hashInt(entry.key_ptr.*), hashInt(entry.value_ptr.*)));
+		}
+	}
+	return result;
+}
 
 pub fn loadModel(arenaAllocator: NeverFailingAllocator, parameters: ZonElement) *SBBGen {
 	const self = arenaAllocator.create(SBBGen);
 	self.* = .{
 		.structure = parameters.get(?[]const u8, "structure", null) orelse unreachable,
 		.placeMode = std.meta.stringToEnum(Blueprint.PasteMode, parameters.get([]const u8, "placeMode", "replaceAir")) orelse Blueprint.PasteMode.replaceAir,
+		.substitutions = loadSubstitutions(arenaAllocator, parameters.getChild("substitutions")),
 	};
 	return self;
+}
+
+fn loadSubstitutions(allocator: NeverFailingAllocator, zon: ZonElement) ?SubstitutionMap {
+	if(zon != .array) {
+		if(zon != .null) std.log.err("Expected array of substitutions, got {s}", .{@tagName(zon)});
+		return null;
+	}
+	if(zon.array.items.len == 0) return null;
+
+	var substitutions: SubstitutionMap = .{};
+
+	for(zon.array.items, 0..) |item, i| {
+		const old = item.get(?[]const u8, "old", null);
+		if(old == null) {
+			std.log.err("Substitution {d} does not have an 'old' field, it will be ignored.", .{i});
+			continue;
+		}
+		const new = item.get(?[]const u8, "new", null);
+		if(new == null) {
+			std.log.err("Substitution {d} does not have a 'new' field, it will be ignored.", .{i});
+			continue;
+		}
+		const key = parseBlock(old.?).typ;
+		const value = parseBlock(new.?).typ;
+
+		const entry = substitutions.getOrPut(allocator.allocator, key) catch unreachable;
+		if(entry.found_existing) {
+			std.log.err("Duplicated substitution for '{s}'.", .{old.?});
+			continue;
+		}
+		entry.value_ptr.* = value;
+	}
+	return substitutions;
 }
 
 pub fn generate(self: *SBBGen, x: i32, y: i32, z: i32, chunk: *ServerChunk, _: CaveMapView, seed: *u64, _: bool) void {
@@ -54,7 +103,7 @@ fn placeSbb(self: *SBBGen, structureId: []const u8, x: i32, y: i32, z: i32, plac
 	const pasteY: i32 = y - rotatedOrigin.y - placementDirection.relY();
 	const pasteZ: i32 = z - rotatedOrigin.z - placementDirection.relZ();
 
-	rotated.blueprint.pasteInGeneration(.{pasteX, pasteY, pasteZ}, chunk, self.placeMode);
+	rotated.blueprint.pasteInGeneration(.{pasteX, pasteY, pasteZ}, chunk, self.placeMode, self.substitutions);
 
 	for(rotated.info.childrenBlocks.items) |childBlock| {
 		const childNullable = structure.children.pickChild(childBlock.block, seed);

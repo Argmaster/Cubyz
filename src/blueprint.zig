@@ -21,6 +21,8 @@ const BlockStorageType = u32;
 const BinaryWriter = main.utils.BinaryWriter;
 const BinaryReader = main.utils.BinaryReader;
 
+pub const SubstitutionMap = std.AutoHashMapUnmanaged(u16, u16);
+
 pub const blueprintVersion = 0;
 
 pub const BlueprintCompression = enum(u16) {
@@ -122,7 +124,7 @@ pub const Blueprint = struct {
 	}
 	pub const PasteMode = enum {all, noAir, replaceAir};
 
-	pub fn pasteInGeneration(self: Blueprint, pos: Vec3i, chunk: *ServerChunk, mode: PasteMode) void {
+	pub fn pasteInGeneration(self: Blueprint, pos: Vec3i, chunk: *ServerChunk, mode: PasteMode, substitutions: ?SubstitutionMap) void {
 		const startX = pos[0];
 		const startY = pos[1];
 		const startZ = pos[2];
@@ -137,8 +139,14 @@ pub const Blueprint = struct {
 					const worldZ = startZ + @as(i32, @intCast(z));
 					if(!chunk.liesInChunk(worldX, worldY, worldZ)) continue;
 
-					const block = self.blocks.get(x, y, z);
+					var block = self.blocks.get(x, y, z);
 					if(structure_building_blocks.isOriginBlock(block) or structure_building_blocks.isChildBlock(block)) continue;
+
+					if(substitutions) |map| {
+						if(map.get(block.typ)) |entry| {
+							block.typ = entry;
+						}
+					}
 
 					sw: switch(mode) {
 						.all => chunk.updateBlockInGeneration(worldX, worldY, worldZ, block),
