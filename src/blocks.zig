@@ -21,6 +21,7 @@ const EntityDataClass = entity_data.EntityDataClass;
 const sbb = main.server.terrain.structure_building_blocks;
 const Assets = main.assets.Assets;
 const ID = main.assets.ID;
+const BaseItem = items.BaseItem;
 
 pub const BlockTag = enum(u32) {
 	air = 0,
@@ -218,7 +219,7 @@ fn registerBlockDrop(typ: u16, zon: ZonElement) void {
 				name = _id[typ];
 			}
 
-			const item = items.getByID(name) orelse continue;
+			const item = BaseItem.getByID(.{.string = name}) orelse continue;
 			resultItems.append(.{.item = .{.baseItem = item}, .amount = amount});
 		}
 

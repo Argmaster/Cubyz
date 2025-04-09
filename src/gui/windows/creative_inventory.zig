@@ -28,11 +28,11 @@ var inventory: Inventory = undefined;
 
 fn lessThan(_: void, lhs: Item, rhs: Item) bool {
 	if(lhs == .baseItem and rhs == .baseItem) {
-		const lhsFolders = std.mem.count(u8, lhs.baseItem.id, "/");
-		const rhsFolders = std.mem.count(u8, rhs.baseItem.id, "/");
+		const lhsFolders = std.mem.count(u8, lhs.baseItem.id.string, "/");
+		const rhsFolders = std.mem.count(u8, rhs.baseItem.id.string, "/");
 		if(lhsFolders < rhsFolders) return true;
 		if(lhsFolders > rhsFolders) return false;
-		return std.ascii.lessThanIgnoreCase(lhs.baseItem.id, rhs.baseItem.id);
+		return std.ascii.lessThanIgnoreCase(lhs.baseItem.id.string, rhs.baseItem.id.string);
 	} else {
 		if(lhs == .baseItem) return true;
 		return false;
@@ -41,9 +41,8 @@ fn lessThan(_: void, lhs: Item, rhs: Item) bool {
 
 pub fn onOpen() void {
 	items = .init(main.globalAllocator);
-	var itemIterator = main.items.iterator();
-	while(itemIterator.next()) |item| {
-		items.append(Item{.baseItem = item.*});
+	for(main.items.BaseItem.list()) |*item| {
+		items.append(Item{.baseItem = item});
 	}
 	std.mem.sort(Item, items.items, {}, lessThan);
 	inventory = Inventory.init(main.globalAllocator, items.items.len, .creative, .other);

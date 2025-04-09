@@ -296,7 +296,7 @@ pub fn rayIntersection(block: Block, item: ?main.items.Item, relativePlayerPos: 
 	if(item) |_item| {
 		switch(_item) {
 			.baseItem => |baseItem| {
-				if(std.mem.eql(u8, baseItem.id, "cubyz:chisel")) { // Select only one eigth of a block
+				if(std.mem.eql(u8, baseItem.id.string, "cubyz:chisel")) { // Select only one eighth of a block
 					if(intersectionPos(block, relativePlayerPos, playerDir)) |intersection| {
 						const offset: Vec3f = @floatFromInt(intersection.minPos);
 						const half: Vec3f = @splat(0.5);
@@ -319,7 +319,7 @@ pub fn onBlockBreaking(item: ?main.items.Item, relativePlayerPos: Vec3f, playerD
 	if(item) |_item| {
 		switch(_item) {
 			.baseItem => |baseItem| {
-				if(std.mem.eql(u8, baseItem.id, "cubyz:chisel")) { // Break only one eigth of a block
+				if(std.mem.eql(u8, baseItem.id.string, "cubyz:chisel")) { // Break only one eighth of a block
 					if(intersectionPos(currentData.*, relativePlayerPos, playerDir)) |intersection| {
 						currentData.data = currentData.data | subBlockMask(intersection.minPos[0], intersection.minPos[1], intersection.minPos[2]);
 						if(currentData.data == 255) currentData.* = .{.typ = 0, .data = 0};
@@ -336,7 +336,7 @@ pub fn onBlockBreaking(item: ?main.items.Item, relativePlayerPos: Vec3f, playerD
 pub fn canBeChangedInto(oldBlock: Block, newBlock: Block, item: main.items.ItemStack, shouldDropSourceBlockOnSuccess: *bool) RotationMode.CanBeChangedInto {
 	if(oldBlock.typ != newBlock.typ) return RotationMode.DefaultFunctions.canBeChangedInto(oldBlock, newBlock, item, shouldDropSourceBlockOnSuccess);
 	if(oldBlock.data == newBlock.data) return .no;
-	if(item.item != null and item.item.? == .baseItem and std.mem.eql(u8, item.item.?.baseItem.id, "cubyz:chisel")) {
+	if(item.item != null and item.item.? == .baseItem and std.mem.eql(u8, item.item.?.baseItem.id.string, "cubyz:chisel")) {
 		return .yes; // TODO: Durability change, after making the chisel a proper tool.
 	}
 	return .no;

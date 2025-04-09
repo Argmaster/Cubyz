@@ -869,7 +869,7 @@ pub const MeshSelection = struct { // MARK: MeshSelection
 				if(isTool) {
 					damage = stack.item.?.tool.getBlockDamage(block);
 				}
-				const isChisel = stack.item != null and stack.item.? == .baseItem and std.mem.eql(u8, stack.item.?.baseItem.id, "cubyz:chisel");
+				const isChisel = stack.item != null and stack.item.? == .baseItem and std.mem.eql(u8, stack.item.?.baseItem.id.string, "cubyz:chisel");
 				if(isChisel and block.mode() == main.rotation.getByID("stairs")) { // TODO: Remove once the chisel is a tool.
 					damage = block.blockHealth();
 				}

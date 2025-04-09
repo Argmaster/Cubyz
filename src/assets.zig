@@ -13,6 +13,8 @@ const NeverFailingAllocator = main.heap.NeverFailingAllocator;
 const NeverFailingArenaAllocator = main.heap.NeverFailingArenaAllocator;
 const ListUnmanaged = main.ListUnmanaged;
 const files = main.files;
+const BaseItem = items_zig.BaseItem;
+const ToolType = items_zig.ToolType;
 
 var commonAssetArena: NeverFailingArenaAllocator = undefined;
 var commonAssetAllocator: NeverFailingAllocator = undefined;
@@ -344,6 +346,10 @@ pub const ID = struct {
 	}
 	pub fn IndexToIdMap(comptime IndexT: type) type {
 		return std.HashMapUnmanaged(IndexT, ID, std.hash_map.AutoContext(IndexT), 80);
+	}
+	pub fn initNullable(_string: ?[]const u8) ?ID {
+		if(_string) |string| return ID{.string = string};
+		return null;
 	}
 	/// Initialize ID from addon name and path to the asset. String will be checked against ID rules.
 	fn initFromPath(
@@ -839,23 +845,6 @@ test "ID.HashContext put twice" {
 	try std.testing.expectEqual(map.count(), 1);
 }
 
-fn registerItem(assetFolder: []const u8, id: ID, zon: ZonElement) !void {
-	const mod = id.addonName() catch unreachable;
-	var texturePath: []const u8 = &[0]u8{};
-	var replacementTexturePath: []const u8 = &[0]u8{};
-	var buf1: [4096]u8 = undefined;
-	var buf2: [4096]u8 = undefined;
-	if(zon.get(?[]const u8, "texture", null)) |texture| {
-		texturePath = try std.fmt.bufPrint(&buf1, "{s}/{s}/items/textures/{s}", .{assetFolder, mod, texture});
-		replacementTexturePath = try std.fmt.bufPrint(&buf2, "assets/{s}/items/textures/{s}", .{mod, texture});
-	}
-	_ = items_zig.register(assetFolder, texturePath, replacementTexturePath, id, zon);
-}
-
-fn registerTool(assetFolder: []const u8, id: ID, zon: ZonElement) void {
-	items_zig.registerTool(assetFolder, id, zon);
-}
-
 fn registerBlock(assetFolder: []const u8, id: ID, zon: ZonElement) !void {
 	if(zon == .null) std.log.err("Missing block: {s}. Replacing it with default block.", .{id.string});
 
@@ -863,9 +852,9 @@ fn registerBlock(assetFolder: []const u8, id: ID, zon: ZonElement) !void {
 	blocks_zig.meshes.register(assetFolder, id, zon);
 }
 
-fn assignBlockItem(id: ID) !void {
+fn assignBlockItem(id: ID) void {
 	const block = blocks_zig.getTypeById(id.string);
-	const item = items_zig.getByID(id.string) orelse unreachable;
+	const item = BaseItem.getByID(id) orelse unreachable;
 	item.block = block;
 }
 
@@ -1031,12 +1020,12 @@ pub fn loadWorldAssets(assetFolder: []const u8, blockPalette: *Palette, itemPale
 	// Items:
 	// First from the palette to enforce ID values.
 	for(itemPalette.palette.items) |id| {
-		std.debug.assert(!items_zig.hasRegistered(id));
+		std.debug.assert(!BaseItem.hasRegistered(id));
 
 		// Some items are created automatically from blocks.
 		if(worldAssets.blocks.get(id)) |zon| {
 			if(!zon.get(bool, "hasItem", true)) continue;
-			try registerItem(assetFolder, id, zon.getChild("item"));
+			BaseItem.register(assetFolder, id, zon.getChild("item"));
 			if(worldAssets.items.get(id) != null) {
 				std.log.err("Item {s} appears as standalone item and as block item.", .{id.string});
 			}
@@ -1044,11 +1033,11 @@ pub fn loadWorldAssets(assetFolder: []const u8, blockPalette: *Palette, itemPale
 		}
 		// Items not related to blocks should appear in items hash map.
 		if(worldAssets.items.get(id)) |zon| {
-			try registerItem(assetFolder, id, zon);
+			BaseItem.register(assetFolder, id, zon);
 			continue;
 		}
 		std.log.err("Missing item: {s}. Replacing it with default item.", .{id.string});
-		try registerItem(assetFolder, id, .null);
+		BaseItem.register(assetFolder, id, .null);
 	}
 
 	// Then missing block-items to keep backwards compatibility of ID order.
@@ -1056,9 +1045,9 @@ pub fn loadWorldAssets(assetFolder: []const u8, blockPalette: *Palette, itemPale
 		const zon = worldAssets.blocks.get(id) orelse .null;
 
 		if(!zon.get(bool, "hasItem", true)) continue;
-		if(items_zig.hasRegistered(id)) continue;
+		if(BaseItem.hasRegistered(id)) continue;
 
-		try registerItem(assetFolder, id, zon.getChild("item"));
+		BaseItem.register(assetFolder, id, zon.getChild("item"));
 		itemPalette.add(id);
 	}
 
@@ -1068,10 +1057,10 @@ pub fn loadWorldAssets(assetFolder: []const u8, blockPalette: *Palette, itemPale
 		const id = entry.key_ptr.*;
 		const zon = entry.value_ptr.*;
 
-		if(items_zig.hasRegistered(id)) continue;
+		if(BaseItem.hasRegistered(id)) continue;
 		std.debug.assert(zon != .null);
 
-		try registerItem(assetFolder, id, zon);
+		BaseItem.register(assetFolder, id, zon);
 		itemPalette.add(id);
 	}
 
@@ -1080,15 +1069,15 @@ pub fn loadWorldAssets(assetFolder: []const u8, blockPalette: *Palette, itemPale
 		const zon = worldAssets.blocks.get(id) orelse .null;
 
 		if(!zon.get(bool, "hasItem", true)) continue;
-		std.debug.assert(items_zig.hasRegistered(id));
+		std.debug.assert(BaseItem.hasRegistered(id));
 
-		try assignBlockItem(id);
+		assignBlockItem(id);
 	}
 
 	// tools:
 	iterator = worldAssets.tools.iterator();
 	while(iterator.next()) |entry| {
-		registerTool(assetFolder, entry.key_ptr.*, entry.value_ptr.*);
+		ToolType.register(assetFolder, entry.key_ptr.*, entry.value_ptr.*);
 	}
 
 	// block drops:

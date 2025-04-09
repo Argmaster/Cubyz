@@ -605,11 +605,7 @@ pub const Player = struct { // MARK: Player
 		if(main.renderer.MeshSelection.selectedBlockPos) |selectedPos| {
 			const block = main.renderer.mesh_storage.getBlock(selectedPos[0], selectedPos[1], selectedPos[2]) orelse return;
 
-			const item: items.Item = for(0..items.itemListSize) |idx| {
-				if(items.itemList[idx].block == block.typ) {
-					break .{.baseItem = &items.itemList[idx]};
-				}
-			} else return;
+			const item = items.Item.getByBlock(block.typ) orelse return;
 
 			// Check if there is already a slot with that item type
 			for(0..12) |slotIdx| {

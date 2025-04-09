@@ -137,13 +137,19 @@ const MaterialProperty = enum {
 pub const BaseItem = struct { // MARK: BaseItem
 	image: graphics.Image,
 	texture: ?graphics.Texture, // TODO: Properly deinit
-	id: []const u8,
+	id: ID,
 	name: []const u8,
+	index: u16,
 
 	stackSize: u16,
 	material: ?Material,
 	block: ?u16,
 	foodValue: f32, // TODO: Effects.
+
+	var nextId: u16 = 0;
+	const maxBaseItems: usize = std.math.maxInt(@TypeOf(nextId)) + 1;
+	var byIndex: [maxBaseItems]BaseItem = undefined;
+	var byID: ID.IdToIndexMap(*BaseItem) = .{};
 
 	var unobtainable = BaseItem{
 		.image = graphics.Image.defaultImage,
@@ -156,38 +162,97 @@ pub const BaseItem = struct { // MARK: BaseItem
 		.foodValue = 0,
 	};
 
-	fn init(self: *BaseItem, allocator: NeverFailingAllocator, texturePath: []const u8, replacementTexturePath: []const u8, id: []const u8, zon: ZonElement) void {
-		self.id = allocator.dupe(u8, id);
-		if(texturePath.len == 0) {
-			self.image = graphics.Image.defaultImage;
-		} else {
-			self.image = graphics.Image.readFromFile(allocator, texturePath) catch graphics.Image.readFromFile(allocator, replacementTexturePath) catch blk: {
-				std.log.err("Item texture not found in {s} and {s}.", .{texturePath, replacementTexturePath});
-				break :blk graphics.Image.defaultImage;
-			};
+	pub fn globalReset() void {
+		nextId = 0;
+		byIndex = undefined;
+		byID = .{};
+	}
+
+	pub fn getByID(_id: ?ID) ?*BaseItem {
+		if(_id) |id| return byID.get(id);
+		return null;
+	}
+
+	pub fn getByBlock(typ: u16) ?*BaseItem {
+		for(0..nextId) |i| {
+			const item = &byIndex[i];
+			if(item.block == typ) {
+				return item;
+			}
 		}
-		self.name = allocator.dupe(u8, zon.get([]const u8, "name", id));
-		self.stackSize = zon.get(u16, "stackSize", 120);
+		return null;
+	}
+
+	pub fn register(assetFolder: []const u8, id: ID, zon: ZonElement) void {
+		if(hasRegistered(id)) {
+			std.log.err("Registered item with id {s} twice!", .{id.string});
+			return;
+		}
+
+		const self: *BaseItem = &byIndex[nextId];
+		defer nextId += 1;
+
+		self.* = .{
+			.id = id.clone(localAllocator),
+			.index = nextId,
+			.name = localAllocator.dupe(u8, zon.get([]const u8, "name", id.string)),
+			.stackSize = zon.get(u16, "stackSize", 120),
+			.image = loadImage(assetFolder, id, zon.get(?[]const u8, "texture", null)),
+			.material = null,
+			.block = blk: {
+				break :blk blocks.getTypeById(zon.get(?[]const u8, "block", null) orelse break :blk null);
+			},
+			.texture = null,
+			.foodValue = zon.get(f32, "food", 0),
+		};
 		const material = zon.getChild("material");
 		if(material == .object) {
 			self.material = Material{};
-			self.material.?.init(allocator, material);
+			self.material.?.init(localAllocator, material);
 		} else {
 			self.material = null;
 		}
-		self.block = blk: {
-			break :blk blocks.getTypeById(zon.get(?[]const u8, "block", null) orelse break :blk null);
-		};
-		self.texture = null;
-		self.foodValue = zon.get(f32, "food", 0);
+		byID.put(localAllocator.allocator, self.id, self) catch unreachable;
+
+		std.log.debug("Registered item: {d: >5} '{s}'", .{nextId, id.string});
+
+		return;
+	}
+
+	pub fn hasRegistered(id: ID) bool {
+		return byID.contains(id);
+	}
+
+	fn loadImage(assetFolder: []const u8, id: ID, _relativeImagePath: ?[]const u8) graphics.Image {
+		const relativeImagePath = _relativeImagePath orelse return graphics.Image.defaultImage;
+		const addon = id.addonName() catch unreachable;
+
+		const imagePath = std.fmt.allocPrint(main.stackAllocator.allocator, "{s}/{s}/items/textures/{s}", .{assetFolder, addon, relativeImagePath}) catch unreachable;
+		defer main.stackAllocator.free(imagePath);
+
+		var image: ?graphics.Image = null;
+
+		image = graphics.Image.readFromFile(localAllocator, imagePath) catch null;
+		if(image != null) return image.?;
+
+		const replacementImagePath = std.fmt.allocPrint(main.stackAllocator.allocator, "assets/{s}/items/textures/{s}", .{addon, relativeImagePath}) catch unreachable;
+		defer main.stackAllocator.free(replacementImagePath);
+
+		image = graphics.Image.readFromFile(localAllocator, replacementImagePath) catch null;
+		if(image != null) return image.?;
+
+		std.log.err("Item texture not found in '{s}' and '{s}'.", .{imagePath, replacementImagePath});
+		return graphics.Image.defaultImage;
+	}
+
+	pub fn list() []BaseItem {
+		return byIndex[0..nextId];
 	}
 
 	fn hashCode(self: BaseItem) u32 {
-		var hash: u32 = 0;
-		for(self.id) |char| {
-			hash = hash*%33 +% char;
-		}
-		return hash;
+		const ctx = ID.HashContext{};
+		// Assuming we have good hash function it should evenly distribute randomness along the bits, so we can just mask it to 32 bits.
+		return @intCast(ctx.hash(self.id) & ((1 << 32) - 1));
 	}
 
 	pub fn getTexture(self: *BaseItem) graphics.Texture {
@@ -389,11 +454,128 @@ const FunctionType = enum {
 };
 
 pub const ToolType = struct { // MARK: ToolType
-	id: []const u8,
+	id: ID,
+	name: []const u8,
+	index: u16,
 	blockTags: []main.blocks.BlockTag,
 	slotInfos: [25]SlotInfo,
 	pixelSources: [16][16]u8,
 	pixelSourcesOverlay: [16][16]u8,
+
+	var nextId: u16 = 0;
+	const maxToolTypes: usize = std.math.maxInt(@TypeOf(nextId)) + 1;
+	var byIndex: [maxToolTypes]ToolType = undefined;
+	var byID: ID.IdToIndexMap(*ToolType) = .{};
+
+	pub fn globalReset() void {
+		nextId = 0;
+		byIndex = undefined;
+		byID = .{};
+	}
+
+	pub fn register(assetFolder: []const u8, id: ID, zon: ZonElement) void {
+		if(hasRegistered(id)) {
+			std.log.err("Registered tool type with id {s} twice!", .{id.string});
+			return;
+		}
+		var slotTypes = std.StringHashMap(SlotInfo).init(main.stackAllocator.allocator);
+		defer slotTypes.deinit();
+		slotTypes.put("none", .{.disabled = true}) catch unreachable;
+		for(zon.getChild("slotTypes").toSlice()) |typ| {
+			const name = typ.get([]const u8, "name", "huh?");
+			var parameterSets = main.List(ParameterSet).init(arena.allocator());
+			for(typ.getChild("parameterSets").toSlice()) |set| {
+				parameterSets.append(.{
+					.source = MaterialProperty.fromString(set.get([]const u8, "source", "not specified")),
+					.destination = ToolProperty.fromString(set.get([]const u8, "destination", "not specified")),
+					.factor = set.get(f32, "factor", 1),
+					.additionConstant = set.get(f32, "additionConstant", 0),
+					.functionType = FunctionType.fromString(set.get([]const u8, "functionType", "linear")),
+				});
+			}
+			slotTypes.put(name, .{
+				.parameters = parameterSets.toOwnedSlice(),
+				.optional = typ.get(bool, "optional", false),
+			}) catch unreachable;
+		}
+		var slotInfos: [25]SlotInfo = undefined;
+		const slotTypesZon = zon.getChild("slots");
+		for(0..25) |i| {
+			const slotTypeId = slotTypesZon.getAtIndex([]const u8, i, "none");
+			slotInfos[i] = slotTypes.get(slotTypeId) orelse blk: {
+				std.log.err("Could not find slot type {s}. It must be specified in the same file.", .{slotTypeId});
+				break :blk .{.disabled = true};
+			};
+		}
+		var pixelSources: [16][16]u8 = undefined;
+		loadPixelSources(assetFolder, id.string, "", &pixelSources);
+		var pixelSourcesOverlay: [16][16]u8 = undefined;
+		loadPixelSources(assetFolder, id.string, "_overlay", &pixelSourcesOverlay);
+
+		const self: *ToolType = &byIndex[nextId];
+		defer nextId += 1;
+
+		self.* = .{
+			.id = id.clone(localAllocator),
+			.name = localAllocator.dupe(u8, zon.get(?[]const u8, "name", null) orelse id.string),
+			.index = nextId,
+			.blockTags = main.blocks.BlockTag.loadFromZon(arena.allocator(), zon.getChild("blockTags")),
+			.slotInfos = slotInfos,
+			.pixelSources = pixelSources,
+			.pixelSourcesOverlay = pixelSourcesOverlay,
+		};
+		byID.put(localAllocator.allocator, self.id, self) catch unreachable;
+
+		std.log.debug("Registered tool: {d: >5} '{s}'", .{nextId, id.string});
+	}
+
+	pub fn hasRegistered(id: ID) bool {
+		return byID.contains(id);
+	}
+
+	fn loadPixelSources(assetFolder: []const u8, id: []const u8, layerPostfix: []const u8, pixelSources: *[16][16]u8) void {
+		var split = std.mem.splitScalar(u8, id, ':');
+		const mod = split.first();
+		const tool = split.rest();
+		const path = std.fmt.allocPrint(main.stackAllocator.allocator, "{s}/{s}/tools/{s}{s}.png", .{assetFolder, mod, tool, layerPostfix}) catch unreachable;
+		defer main.stackAllocator.free(path);
+		const image = main.graphics.Image.readFromFile(main.stackAllocator, path) catch |err| blk: {
+			if(err != error.FileNotFound) {
+				std.log.err("Error while reading tool image '{s}': {s}", .{path, @errorName(err)});
+			}
+			const replacementPath = std.fmt.allocPrint(main.stackAllocator.allocator, "assets/{s}/tools/{s}{s}.png", .{mod, tool, layerPostfix}) catch unreachable;
+			defer main.stackAllocator.free(replacementPath);
+			break :blk main.graphics.Image.readFromFile(main.stackAllocator, replacementPath) catch |err2| {
+				if(layerPostfix.len == 0 or err2 != error.FileNotFound)
+					std.log.err("Error while reading tool image. Tried '{s}' and '{s}': {s}", .{path, replacementPath, @errorName(err2)});
+				break :blk main.graphics.Image.emptyImage;
+			};
+		};
+		defer image.deinit(main.stackAllocator);
+		if((image.width != 16 or image.height != 16) and image.imageData.ptr != main.graphics.Image.emptyImage.imageData.ptr) {
+			std.log.err("Truncating image for {s} with incorrect dimensions. Should be 16×16.", .{id});
+		}
+		for(0..16) |x| {
+			for(0..16) |y| {
+				const color = if(image.width != 0 and image.height != 0) image.getRGB(@min(image.width - 1, x), image.height - 1 - @min(image.height - 1, y)) else main.graphics.Color{.r = 0, .g = 0, .b = 0, .a = 0};
+				pixelSources[x][y] = blk: {
+					if(color.a == 0) break :blk 255;
+					const xPos = color.r/52;
+					const yPos = color.b/52;
+					break :blk xPos + 5*yPos;
+				};
+			}
+		}
+	}
+
+	pub fn getByID(_id: ?ID) ?*ToolType {
+		if(_id) |id| return byID.get(id);
+		return null;
+	}
+
+	pub fn list() []ToolType {
+		return byIndex[0..nextId];
+	}
 };
 
 const ToolProperty = enum {
@@ -495,10 +677,19 @@ pub const Tool = struct { // MARK: Tool
 	}
 
 	pub fn initFromZon(zon: ZonElement) *Tool {
-		const self = initFromCraftingGrid(extractItemsFromZon(zon.getChild("grid")), zon.get(u32, "seed", 0), getToolTypeByID(zon.get([]const u8, "type", "cubyz:pickaxe")) orelse blk: {
-			std.log.err("Couldn't find tool with type {s}. Replacing it with cubyz:pickaxe", .{zon.get([]const u8, "type", "cubyz:pickaxe")});
-			break :blk getToolTypeByID("cubyz:pickaxe") orelse @panic("cubyz:pickaxe tool not found. Did you load the game with the correct assets?");
-		});
+		const pickaxe = ToolType.getByID(.{.string = "cubyz:pickaxe"}) orelse @panic("'cubyz:pickaxe' tool not found. Did you load the game with the correct assets?");
+		var toolType: *ToolType = undefined;
+		if(zon.get(?[]const u8, "type", null)) |toolTypeString| {
+			toolType = ToolType.getByID(.{.string = toolTypeString}) orelse blk: {
+				std.log.err("Couldn't find tool with type '{s}'. Replacing it with cubyz:pickaxe", .{toolTypeString});
+				break :blk pickaxe;
+			};
+		} else {
+			std.log.warn("Tool type not specified. Replacing it with 'cubyz:pickaxe'", .{});
+			toolType = pickaxe;
+		}
+
+		const self = initFromCraftingGrid(extractItemsFromZon(zon.getChild("grid")), zon.get(u32, "seed", 0), toolType);
 		self.durability = zon.get(u32, "durability", std.math.lossyCast(u32, self.maxDurability));
 		return self;
 	}
@@ -506,7 +697,7 @@ pub const Tool = struct { // MARK: Tool
 	fn extractItemsFromZon(zonArray: ZonElement) [25]?*const BaseItem {
 		var items: [25]?*const BaseItem = undefined;
 		for(&items, 0..) |*item, i| {
-			item.* = reverseIndices.get(zonArray.getAtIndex([]const u8, i, "null"));
+			item.* = BaseItem.getByID(.initNullable(zonArray.getAtIndex(?[]const u8, i, null)));
 		}
 		return items;
 	}
@@ -516,7 +707,7 @@ pub const Tool = struct { // MARK: Tool
 		const zonArray = ZonElement.initArray(allocator);
 		for(self.craftingGrid) |nullItem| {
 			if(nullItem) |item| {
-				zonArray.array.append(.{.string = item.id});
+				zonArray.array.append(.{.string = item.id.string});
 			} else {
 				zonArray.array.append(.null);
 			}
@@ -524,7 +715,7 @@ pub const Tool = struct { // MARK: Tool
 		zonObject.put("grid", zonArray);
 		zonObject.put("durability", self.durability);
 		zonObject.put("seed", self.seed);
-		zonObject.put("type", self.type.id);
+		zonObject.put("type", self.type.id.string);
 		return zonObject;
 	}
 
@@ -560,7 +751,7 @@ pub const Tool = struct { // MARK: Tool
 			\\Damage: {d:.2}
 			\\Durability: {}/{}
 		, .{
-			self.type.id,
+			self.type.id.string,
 			self.swingTime,
 			self.damage,
 			self.durability,
@@ -601,7 +792,7 @@ pub const Item = union(enum) { // MARK: Item
 	tool: *Tool,
 
 	pub fn init(zon: ZonElement) !Item {
-		if(reverseIndices.get(zon.get([]const u8, "item", "null"))) |baseItem| {
+		if(BaseItem.getByID(.{.string = zon.get([]const u8, "item", "null")})) |baseItem| {
 			return Item{.baseItem = baseItem};
 		} else {
 			const toolZon = zon.getChild("tool");
@@ -642,7 +833,7 @@ pub const Item = union(enum) { // MARK: Item
 	pub fn insertIntoZon(self: Item, allocator: NeverFailingAllocator, zonObject: ZonElement) void {
 		switch(self) {
 			.baseItem => |_baseItem| {
-				zonObject.put("item", _baseItem.id);
+				zonObject.put("item", _baseItem.id.string);
 			},
 			.tool => |_tool| {
 				zonObject.put("tool", _tool.save(allocator));
@@ -688,6 +879,14 @@ pub const Item = union(enum) { // MARK: Item
 			inline else => |item| {
 				return item.hashCode();
 			},
+		}
+	}
+
+	pub fn getByBlock(typ: u16) ?Item {
+		if(BaseItem.getByBlock(typ)) |baseItem| {
+			return .{.baseItem = baseItem};
+		} else {
+			return null;
 		}
 	}
 };
@@ -749,25 +948,9 @@ pub const Recipe = struct { // MARK: Recipe
 };
 
 var arena: main.heap.NeverFailingArenaAllocator = undefined;
-var toolTypes: std.StringHashMap(ToolType) = undefined;
-var reverseIndices: std.StringHashMap(*BaseItem) = undefined;
+var localAllocator = arena.allocator();
 var modifiers: std.StringHashMap(*const Modifier.VTable) = undefined;
-pub var itemList: [65536]BaseItem = undefined;
-pub var itemListSize: u16 = 0;
-
 var recipeList: main.List(Recipe) = undefined;
-
-pub fn hasRegistered(id: ID) bool {
-	return reverseIndices.contains(id.string);
-}
-
-pub fn toolTypeIterator() std.StringHashMap(ToolType).ValueIterator {
-	return toolTypes.valueIterator();
-}
-
-pub fn iterator() std.StringHashMap(*BaseItem).ValueIterator {
-	return reverseIndices.valueIterator();
-}
 
 pub fn recipes() []Recipe {
 	return recipeList.items;
@@ -775,10 +958,8 @@ pub fn recipes() []Recipe {
 
 pub fn globalInit() void {
 	arena = .init(main.globalAllocator);
-	toolTypes = .init(arena.allocator().allocator);
-	reverseIndices = .init(arena.allocator().allocator);
+	// There is no need to deinit ToolType and BaseItem global storage as they can initialized statically.
 	recipeList = .init(arena.allocator());
-	itemListSize = 0;
 	modifiers = .init(main.globalAllocator.allocator);
 	inline for(@typeInfo(modifierList).@"struct".decls) |decl| {
 		const ModifierStruct = @field(modifierList, decl.name);
@@ -794,104 +975,6 @@ pub fn globalInit() void {
 	Inventory.Sync.ClientSide.init();
 }
 
-pub fn register(_: []const u8, texturePath: []const u8, replacementTexturePath: []const u8, id: ID, zon: ZonElement) *BaseItem {
-	if(reverseIndices.contains(id.string)) {
-		std.log.err("Registered item with id {s} twice!", .{id.string});
-	}
-	const newItem = &itemList[itemListSize];
-	newItem.init(arena.allocator(), texturePath, replacementTexturePath, id.string, zon);
-	reverseIndices.put(newItem.id, newItem) catch unreachable;
-
-	std.log.debug("Registered item: {d: >5} '{s}'", .{itemListSize, id.string});
-
-	itemListSize += 1;
-	return newItem;
-}
-
-fn loadPixelSources(assetFolder: []const u8, id: []const u8, layerPostfix: []const u8, pixelSources: *[16][16]u8) void {
-	var split = std.mem.splitScalar(u8, id, ':');
-	const mod = split.first();
-	const tool = split.rest();
-	const path = std.fmt.allocPrint(main.stackAllocator.allocator, "{s}/{s}/tools/{s}{s}.png", .{assetFolder, mod, tool, layerPostfix}) catch unreachable;
-	defer main.stackAllocator.free(path);
-	const image = main.graphics.Image.readFromFile(main.stackAllocator, path) catch |err| blk: {
-		if(err != error.FileNotFound) {
-			std.log.err("Error while reading tool image '{s}': {s}", .{path, @errorName(err)});
-		}
-		const replacementPath = std.fmt.allocPrint(main.stackAllocator.allocator, "assets/{s}/tools/{s}{s}.png", .{mod, tool, layerPostfix}) catch unreachable;
-		defer main.stackAllocator.free(replacementPath);
-		break :blk main.graphics.Image.readFromFile(main.stackAllocator, replacementPath) catch |err2| {
-			if(layerPostfix.len == 0 or err2 != error.FileNotFound)
-				std.log.err("Error while reading tool image. Tried '{s}' and '{s}': {s}", .{path, replacementPath, @errorName(err2)});
-			break :blk main.graphics.Image.emptyImage;
-		};
-	};
-	defer image.deinit(main.stackAllocator);
-	if((image.width != 16 or image.height != 16) and image.imageData.ptr != main.graphics.Image.emptyImage.imageData.ptr) {
-		std.log.err("Truncating image for {s} with incorrect dimensions. Should be 16×16.", .{id});
-	}
-	for(0..16) |x| {
-		for(0..16) |y| {
-			const color = if(image.width != 0 and image.height != 0) image.getRGB(@min(image.width - 1, x), image.height - 1 - @min(image.height - 1, y)) else main.graphics.Color{.r = 0, .g = 0, .b = 0, .a = 0};
-			pixelSources[x][y] = blk: {
-				if(color.a == 0) break :blk 255;
-				const xPos = color.r/52;
-				const yPos = color.b/52;
-				break :blk xPos + 5*yPos;
-			};
-		}
-	}
-}
-
-pub fn registerTool(assetFolder: []const u8, id: ID, zon: ZonElement) void {
-	if(toolTypes.contains(id.string)) {
-		std.log.err("Registered tool type with id {s} twice!", .{id.string});
-	}
-	var slotTypes = std.StringHashMap(SlotInfo).init(main.stackAllocator.allocator);
-	defer slotTypes.deinit();
-	slotTypes.put("none", .{.disabled = true}) catch unreachable;
-	for(zon.getChild("slotTypes").toSlice()) |typ| {
-		const name = typ.get([]const u8, "name", "huh?");
-		var parameterSets = main.List(ParameterSet).init(arena.allocator());
-		for(typ.getChild("parameterSets").toSlice()) |set| {
-			parameterSets.append(.{
-				.source = MaterialProperty.fromString(set.get([]const u8, "source", "not specified")),
-				.destination = ToolProperty.fromString(set.get([]const u8, "destination", "not specified")),
-				.factor = set.get(f32, "factor", 1),
-				.additionConstant = set.get(f32, "additionConstant", 0),
-				.functionType = FunctionType.fromString(set.get([]const u8, "functionType", "linear")),
-			});
-		}
-		slotTypes.put(name, .{
-			.parameters = parameterSets.toOwnedSlice(),
-			.optional = typ.get(bool, "optional", false),
-		}) catch unreachable;
-	}
-	var slotInfos: [25]SlotInfo = undefined;
-	const slotTypesZon = zon.getChild("slots");
-	for(0..25) |i| {
-		const slotTypeId = slotTypesZon.getAtIndex([]const u8, i, "none");
-		slotInfos[i] = slotTypes.get(slotTypeId) orelse blk: {
-			std.log.err("Could not find slot type {s}. It must be specified in the same file.", .{slotTypeId});
-			break :blk .{.disabled = true};
-		};
-	}
-	var pixelSources: [16][16]u8 = undefined;
-	loadPixelSources(assetFolder, id.string, "", &pixelSources);
-	var pixelSourcesOverlay: [16][16]u8 = undefined;
-	loadPixelSources(assetFolder, id.string, "_overlay", &pixelSourcesOverlay);
-	const idDupe = arena.allocator().dupe(u8, id.string);
-	toolTypes.put(idDupe, .{
-		.id = idDupe,
-		.blockTags = main.blocks.BlockTag.loadFromZon(arena.allocator(), zon.getChild("blockTags")),
-		.slotInfos = slotInfos,
-		.pixelSources = pixelSources,
-		.pixelSourcesOverlay = pixelSourcesOverlay,
-	}) catch unreachable;
-
-	std.log.debug("Registered tool: '{s}'", .{id.string});
-}
-
 fn parseRecipeItem(zon: ZonElement) !ItemStack {
 	var id = zon.as([]const u8, "");
 	id = std.mem.trim(u8, id, &std.ascii.whitespace);
@@ -901,7 +984,7 @@ fn parseRecipeItem(zon: ZonElement) !ItemStack {
 		id = id[index + 1 ..];
 		id = std.mem.trim(u8, id, &std.ascii.whitespace);
 	}
-	result.item = .{.baseItem = getByID(id) orelse return error.ItemNotFound};
+	result.item = .{.baseItem = BaseItem.getByID(.{.string = id}) orelse return error.ItemNotFound};
 	return result;
 }
 
@@ -934,21 +1017,19 @@ pub fn registerRecipes(zon: ZonElement) void {
 }
 
 pub fn reset() void {
-	toolTypes.clearAndFree();
-	reverseIndices.clearAndFree();
+	ToolType.globalReset();
+	BaseItem.globalReset();
 	for(recipeList.items) |recipe| {
 		if(recipe.cachedInventory) |inv| {
 			inv.deinit(main.globalAllocator);
 		}
 	}
 	recipeList.clearAndFree();
-	itemListSize = 0;
 	_ = arena.reset(.free_all);
 }
 
 pub fn deinit() void {
-	toolTypes.clearAndFree();
-	reverseIndices.clearAndFree();
+	// There is no need to deinit ToolType and BaseItem global storage as it will be dropped with arena.
 	for(recipeList.items) |recipe| {
 		if(recipe.cachedInventory) |inv| {
 			inv.deinit(main.globalAllocator);
@@ -958,22 +1039,4 @@ pub fn deinit() void {
 	modifiers.deinit();
 	arena.deinit();
 	Inventory.Sync.ClientSide.deinit();
-}
-
-pub fn getByID(id: []const u8) ?*BaseItem {
-	if(reverseIndices.get(id)) |result| {
-		return result;
-	} else {
-		std.log.err("Couldn't find item {s}.", .{id});
-		return null;
-	}
-}
-
-pub fn getToolTypeByID(id: []const u8) ?*const ToolType {
-	if(toolTypes.getPtr(id)) |result| {
-		return result;
-	} else {
-		std.log.err("Couldn't find item {s}.", .{id});
-		return null;
-	}
 }

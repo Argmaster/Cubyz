@@ -1089,10 +1089,10 @@ pub const Command = struct { // MARK: Command
 				},
 				.recipe => |val| {
 					writer.writeInt(u16, val.resultAmount);
-					writer.writeWithDelimiter(val.resultItem.id, 0);
+					writer.writeWithDelimiter(val.resultItem.id.string, 0);
 					for(0..val.sourceItems.len) |i| {
 						writer.writeInt(u16, val.sourceAmounts[i]);
-						writer.writeWithDelimiter(val.sourceItems[i].id, 0);
+						writer.writeWithDelimiter(val.sourceItems[i].id.string, 0);
 					}
 				},
 				.sharedTestingInventory, .other => {},
@@ -1101,7 +1101,7 @@ pub const Command = struct { // MARK: Command
 			switch(self.inv.type) {
 				.normal, .creative, .crafting => {},
 				.workbench => {
-					writer.writeSlice(self.inv.type.workbench.id);
+					writer.writeSlice(self.inv.type.workbench.id.string);
 				},
 			}
 		}
@@ -1123,7 +1123,7 @@ pub const Command = struct { // MARK: Command
 						while(reader.remaining.len >= 2) {
 							const resultAmount = try reader.readInt(u16);
 							const itemId = try reader.readUntilDelimiter(0);
-							const resultItem = main.items.getByID(itemId) orelse return error.Invalid;
+							const resultItem = main.items.BaseItem.getByID(.{.string = itemId}) orelse return error.Invalid;
 							itemList.append(.{.amount = resultAmount, .item = resultItem});
 						}
 						if(itemList.items.len != len) return error.Invalid;
@@ -1144,7 +1144,7 @@ pub const Command = struct { // MARK: Command
 			};
 			const typ: Type = switch(typeEnum) {
 				inline .normal, .creative, .crafting => |tag| tag,
-				.workbench => .{.workbench = main.items.getToolTypeByID(reader.remaining) orelse return error.Invalid},
+				.workbench => .{.workbench = main.items.ToolType.getByID(.{.string = reader.remaining}) orelse return error.Invalid},
 			};
 			Sync.ServerSide.createInventory(user.?, id, len, typ, source);
 			return .{
@@ -1805,7 +1805,7 @@ fn update(self: Inventory) void {
 			var hash = std.hash.Crc32.init();
 			for(availableItems) |item| {
 				if(item != null) {
-					hash.update(item.?.id);
+					hash.update(item.?.id.string);
 				} else {
 					hash.update("none");
 				}
