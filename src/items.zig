@@ -168,6 +168,22 @@ pub const ItemIndex = struct {
 		return &itemsByIndex[self.index];
 	}
 
+    pub fn id(self: ItemIndex) []const u8 {
+        return self.item().?.id;
+    }
+
+    pub fn block(self: ItemIndex) ?u16 {
+        return self.item().?.block;
+    }
+
+    pub fn material(self: ItemIndex) ?Material {
+        return self.item().?.material;
+    }
+
+    pub fn image(self: ItemIndex) graphics.Image {
+        return self.item().?.image;
+    }
+
     pub fn getTexture(self: ItemIndex) graphics.Texture {
         return self.item().?.getTexture();
     }
@@ -178,6 +194,14 @@ pub const ItemIndex = struct {
 
     pub fn hashCode(self: ItemIndex) u32 {
         return self.item().?.hashCode();
+    }
+
+    pub fn stackSize(self: ItemIndex) u16 {
+        return self.item().?.stackSize;
+    }
+
+    pub fn hasTag(self: ItemIndex, tag: Tag) bool {
+        return self.item().?.hasTag(tag);
     }
 };
 
@@ -292,8 +316,8 @@ const TextureGenerator = struct { // MARK: TextureGenerator
 					while(dy <= 0) : (dy += 1) {
 						if(y + dy < 0 or y + dy >= 16) continue;
 						const otherItem = itemGrid[@intCast(x + dx)][@intCast(y + dy)];
-						heightMap[x][y] = if(otherItem) |item| (if(item.material) |material| 1 + (4*random.nextFloat(seed) - 2)*material.textureRoughness else 0) else 0;
-						if(otherItem != oneItem) {
+						heightMap[x][y] = if(otherItem) |item| (if(item.material()) |material| 1 + (4*random.nextFloat(seed) - 2)*material.textureRoughness else 0) else 0;
+						if((otherItem != null and oneItem == null) or (otherItem == null and oneItem != null) or otherItem.?.index != oneItem.?.index) {
 							hasDifferentItems = true;
 						}
 					}
@@ -347,7 +371,7 @@ const TextureGenerator = struct { // MARK: TextureGenerator
 			var y: u8 = 0;
 			while(y < 16) : (y += 1) {
 				if(tool.materialGrid[x][y]) |item| {
-					if(item.material) |material| {
+					if(item.material()) |material| {
 						// Calculate the lighting based on the nearest free space:
 						const lightTL = heightMap[x][y] - heightMap[x + 1][y + 1];
 						const lightTR = heightMap[x + 1][y] - heightMap[x][y + 1];
@@ -378,7 +402,7 @@ const ToolPhysics = struct { // MARK: ToolPhysics
 			var sum: f32 = 0;
 			var weight: f32 = 0;
 			for(0..25) |i| {
-				const material = (tool.craftingGrid[i] orelse continue).material orelse continue;
+				const material = (tool.craftingGrid[i] orelse continue).material() orelse continue;
 				sum += property.weigths[i]*material.getProperty(property.source orelse break);
 				weight += property.weigths[i];
 			}
@@ -391,7 +415,7 @@ const ToolPhysics = struct { // MARK: ToolPhysics
 		if(tool.damage < 1) tool.damage = 1/(2 - tool.damage);
 		if(tool.swingTime < 1) tool.swingTime = 1/(2 - tool.swingTime);
 		for(0..25) |i| {
-			const material = (tool.craftingGrid[i] orelse continue).material orelse continue;
+			const material = (tool.craftingGrid[i] orelse continue).material() orelse continue;
 			outer: for(material.modifiers) |newMod| {
 				if(!newMod.restriction.satisfied(tool, @intCast(i%5), @intCast(i/5))) continue;
 				for(tempModifiers.items) |*oldMod| {
@@ -558,7 +582,7 @@ pub const Tool = struct { // MARK: Tool
 		const zonArray = ZonElement.initArray(allocator);
 		for(self.craftingGrid) |nullItem| {
 			if(nullItem) |item| {
-				zonArray.array.append(.{.string = item.id});
+				zonArray.array.append(.{.string = item.id()});
 			} else {
 				zonArray.array.append(.null);
 			}
@@ -574,13 +598,13 @@ pub const Tool = struct { // MARK: Tool
 		var hash: u32 = 0;
 		for(self.craftingGrid) |nullItem| {
 			if(nullItem) |item| {
-				hash = 33*%hash +% item.material.?.hashCode();
+				hash = 33*%hash +% item.material().?.hashCode();
 			}
 		}
 		return hash;
 	}
 
-	pub fn getItemAt(self: *const Tool, x: i32, y: i32) ?*const BaseItem {
+	pub fn getItemAt(self: *const Tool, x: i32, y: i32) ?ItemIndex {
 		if(x < 0 or x >= 5) return null;
 		if(y < 0 or y >= 5) return null;
 		return self.craftingGrid[@intCast(x + y*5)];
@@ -661,10 +685,10 @@ pub const Item = union(enum) { // MARK: Item
 	pub fn eqlId(self: Item, id: []const u8) bool {
 		switch(self) {
 			.baseItem => |_baseItem| {
-				return std.mem.eql(u8, _baseItem.item().?.id, id);
+				return std.mem.eql(u8, _baseItem.id(), id);
 			},
 			.tool => |_tool| {
-				return std.mem.eql(_tool.type.id, id);
+				return std.mem.eql(u8, _tool.type.id, id);
 			},
 		}
 	}
@@ -690,7 +714,7 @@ pub const Item = union(enum) { // MARK: Item
 	pub fn stackSize(self: Item) u16 {
 		switch(self) {
 			.baseItem => |_baseItem| {
-				return _baseItem.stackSize;
+				return _baseItem.stackSize();
 			},
 			.tool => {
 				return 1;
@@ -701,7 +725,7 @@ pub const Item = union(enum) { // MARK: Item
 	pub fn insertIntoZon(self: Item, allocator: NeverFailingAllocator, zonObject: ZonElement) void {
 		switch(self) {
 			.baseItem => |_baseItem| {
-				zonObject.put("item", _baseItem.id);
+				zonObject.put("item", _baseItem.item().?.id);
 			},
 			.tool => |_tool| {
 				zonObject.put("tool", _tool.save(allocator));
@@ -728,7 +752,7 @@ pub const Item = union(enum) { // MARK: Item
 	pub fn getImage(self: Item) graphics.Image {
 		switch(self) {
 			.baseItem => |_baseItem| {
-				return _baseItem.image;
+				return _baseItem.image();
 			},
 			.tool => |_tool| {
 				return _tool.image;
@@ -971,7 +995,7 @@ fn parseRecipe(zon: ZonElement) !Recipe {
 	const inputs = zon.getChild("inputs").toSlice();
 	const output = try parseRecipeItem(zon.getChild("output"));
 	const recipe = Recipe{
-		.sourceItems = arena.allocator().alloc(*BaseItem, inputs.len),
+		.sourceItems = arena.allocator().alloc(ItemIndex, inputs.len),
 		.sourceAmounts = arena.allocator().alloc(u16, inputs.len),
 		.resultItem = output.item.?.baseItem,
 		.resultAmount = output.amount,
@@ -982,7 +1006,7 @@ fn parseRecipe(zon: ZonElement) !Recipe {
 	}
 	for(inputs, 0..) |inputZon, i| {
 		const input = try parseRecipeItem(inputZon);
-		recipe.sourceItems[i] = input.item.?.item;
+		recipe.sourceItems[i] = input.item.?.baseItem;
 		recipe.sourceAmounts[i] = input.amount;
 	}
 	return recipe;

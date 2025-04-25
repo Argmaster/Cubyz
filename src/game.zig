@@ -606,7 +606,7 @@ pub const Player = struct { // MARK: Player
 
 			const item: items.Item = for(items.itemsByIndex) |index| {
 				if(index.block == block.typ) {
-					break .{.baseItem = index.index()};
+					break .{.baseItem = index.index().?};
 				}
 			} else return;
 

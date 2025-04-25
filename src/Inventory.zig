@@ -338,7 +338,7 @@ pub const Sync = struct { // MARK: Sync
 						inventory.inv._items[i].item = .{.baseItem = recipe.sourceItems[i]};
 					}
 					inventory.inv._items[inventory.inv._items.len - 1].amount = recipe.resultAmount;
-					inventory.inv._items[inventory.inv._items.len - 1].item = .{.item = recipe.resultItem};
+					inventory.inv._items[inventory.inv._items.len - 1].item = .{.baseItem = recipe.resultItem};
 				},
 				.other => {},
 				.alreadyFreed => unreachable,
@@ -991,7 +991,7 @@ pub const Command = struct { // MARK: Command
 	fn canPutIntoWorkbench(source: InventoryAndSlot) bool {
 		if(source.ref().item) |item| {
 			if(item != .baseItem) return false;
-			return item.baseItem.item().?.material != null;
+			return item.baseItem.material() != null;
 		}
 		return true;
 	}

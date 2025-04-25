@@ -77,8 +77,8 @@ pub fn onBlockBreaking(_: ?main.items.Item, _: Vec3f, _: Vec3f, currentData: *Bl
 	}
 }
 
-fn isItemBlock(block: Block, item: main.items.ItemStack) bool {
-	return item.item != null and item.item.? == .baseItem and item.item.?.baseItem.block == block.typ;
+fn isItemBlock(block: Block, stack: main.items.ItemStack) bool {
+	return stack.item != null and stack.item.? == .baseItem and stack.item.?.baseItem.block() == block.typ;
 }
 
 pub fn canBeChangedInto(oldBlock: Block, newBlock: Block, item: main.items.ItemStack, shouldDropSourceBlockOnSuccess: *bool) RotationMode.CanBeChangedInto {

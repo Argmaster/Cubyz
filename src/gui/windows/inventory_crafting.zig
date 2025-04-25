@@ -3,6 +3,7 @@ const std = @import("std");
 const main = @import("main");
 const items = main.items;
 const BaseItem = items.BaseItem;
+const ItemIndex = items.ItemIndex;
 const Inventory = items.Inventory;
 const ItemStack = items.ItemStack;
 const Player = main.game.Player;
@@ -31,7 +32,7 @@ pub var window = GuiWindow{
 
 const padding: f32 = 8;
 
-var availableItems: main.List(*BaseItem) = undefined;
+var availableItems: main.List(ItemIndex) = undefined;
 var itemAmount: main.List(u32) = undefined;
 var inventories: main.List(Inventory) = undefined;
 
@@ -50,7 +51,7 @@ fn addItemStackToAvailable(itemStack: ItemStack) void {
 		if(item == .baseItem) {
 			const baseItem = item.baseItem;
 			for(availableItems.items, 0..) |alreadyPresent, i| {
-				if(baseItem == alreadyPresent) {
+				if(baseItem.index == alreadyPresent.index) {
 					itemAmount.items[i] += itemStack.amount;
 					return;
 				}
@@ -85,7 +86,7 @@ fn findAvailableRecipes(list: *VerticalList) bool {
 	outer: for(items.recipes()) |*recipe| {
 		middle: for(recipe.sourceItems, recipe.sourceAmounts) |sourceItem, sourceAmount| {
 			for(availableItems.items, itemAmount.items) |availableItem, availableAmount| {
-				if(availableItem == sourceItem and availableAmount >= sourceAmount) {
+				if(availableItem.index == sourceItem.index and availableAmount >= sourceAmount) {
 					continue :middle;
 				}
 			}
