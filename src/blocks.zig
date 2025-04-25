@@ -174,8 +174,8 @@ fn registerBlockDrop(typ: u16, zon: ZonElement) void {
 				name = _id[typ];
 			}
 
-			const item = items.getByID(name) orelse continue;
-			resultItems.append(.{.item = .{.baseItem = item}, .amount = amount});
+			const baseItem = items.getByID(name) orelse continue;
+			resultItems.append(.{.item = .{.baseItem = baseItem}, .amount = amount});
 		}
 
 		_blockDrops[typ][i].items = allocator.dupe(items.ItemStack, resultItems.items);

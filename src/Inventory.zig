@@ -4,6 +4,7 @@ const main = @import("main");
 const BaseItem = main.items.BaseItem;
 const Block = main.blocks.Block;
 const Item = main.items.Item;
+const ItemIndex = main.items.ItemIndex;
 const ItemStack = main.items.ItemStack;
 const Tool = main.items.Tool;
 const utils = main.utils;
@@ -337,7 +338,7 @@ pub const Sync = struct { // MARK: Sync
 						inventory.inv._items[i].item = .{.baseItem = recipe.sourceItems[i]};
 					}
 					inventory.inv._items[inventory.inv._items.len - 1].amount = recipe.resultAmount;
-					inventory.inv._items[inventory.inv._items.len - 1].item = .{.baseItem = recipe.resultItem};
+					inventory.inv._items[inventory.inv._items.len - 1].item = .{.item = recipe.resultItem};
 				},
 				.other => {},
 				.alreadyFreed => unreachable,
@@ -990,7 +991,7 @@ pub const Command = struct { // MARK: Command
 	fn canPutIntoWorkbench(source: InventoryAndSlot) bool {
 		if(source.ref().item) |item| {
 			if(item != .baseItem) return false;
-			return item.baseItem.material != null;
+			return item.baseItem.item().?.material != null;
 		}
 		return true;
 	}
@@ -1089,10 +1090,10 @@ pub const Command = struct { // MARK: Command
 				},
 				.recipe => |val| {
 					writer.writeInt(u16, val.resultAmount);
-					writer.writeWithDelimiter(val.resultItem.id, 0);
+					writer.writeInt(u16, val.resultItem.index);
 					for(0..val.sourceItems.len) |i| {
 						writer.writeInt(u16, val.sourceAmounts[i]);
-						writer.writeWithDelimiter(val.sourceItems[i].id, 0);
+						writer.writeInt(u16, val.sourceItems[i].index);
 					}
 				},
 				.sharedTestingInventory, .other => {},
@@ -1118,20 +1119,19 @@ pub const Command = struct { // MARK: Command
 				.hand => .{.hand = try reader.readInt(u32)},
 				.recipe => .{
 					.recipe = blk: {
-						var itemList = main.List(struct {amount: u16, item: *const main.items.BaseItem}).initCapacity(main.stackAllocator, len);
+						var itemList = main.List(struct {amount: u16, item: ItemIndex}).initCapacity(main.stackAllocator, len);
 						defer itemList.deinit();
 						while(reader.remaining.len >= 2) {
 							const resultAmount = try reader.readInt(u16);
-							const itemId = try reader.readUntilDelimiter(0);
-							const resultItem = main.items.getByID(itemId) orelse return error.Invalid;
-							itemList.append(.{.amount = resultAmount, .item = resultItem});
+							const itemIndex = try reader.readInt(u16);
+							itemList.append(.{.amount = resultAmount, .item = .{.index = itemIndex}});
 						}
 						if(itemList.items.len != len) return error.Invalid;
 						// Find the recipe in our list:
 						outer: for(main.items.recipes()) |*recipe| {
-							if(recipe.resultAmount == itemList.items[0].amount and recipe.resultItem == itemList.items[0].item and recipe.sourceItems.len == itemList.items.len - 1) {
+							if(recipe.resultAmount == itemList.items[0].amount and recipe.resultItem.index == itemList.items[0].item.index and recipe.sourceItems.len == itemList.items.len - 1) {
 								for(itemList.items[1..], 0..) |item, i| {
-									if(item.amount != recipe.sourceAmounts[i] or item.item != recipe.sourceItems[i]) continue :outer;
+									if(item.amount != recipe.sourceAmounts[i] or item.item.index != recipe.sourceItems[i].index) continue :outer;
 								}
 								break :blk recipe;
 							}
@@ -1789,7 +1789,7 @@ fn update(self: Inventory) void {
 	if(self.type == .workbench) {
 		self._items[self._items.len - 1].deinit();
 		self._items[self._items.len - 1].clear();
-		var availableItems: [25]?*const BaseItem = undefined;
+		var availableItems: [25]?ItemIndex = undefined;
 		var hasAllMandatory: bool = true;
 
 		for(0..25) |i| {
@@ -1805,7 +1805,7 @@ fn update(self: Inventory) void {
 			var hash = std.hash.Crc32.init();
 			for(availableItems) |item| {
 				if(item != null) {
-					hash.update(item.?.id);
+					hash.update(std.mem.asBytes(&item));
 				} else {
 					hash.update("none");
 				}

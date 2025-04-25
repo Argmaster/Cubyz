@@ -807,11 +807,11 @@ pub const ItemDropRenderer = struct { // MARK: ItemDropRenderer
 			const model = getModel(item);
 			var vertices: u31 = 36;
 
-			const isBlock: bool = item == .baseItem and item.baseItem.block != null and item.baseItem.image.imageData.ptr == graphics.Image.defaultImage.imageData.ptr;
+			const isBlock: bool = item == .baseItem and item.item.block != null and item.item.image.imageData.ptr == graphics.Image.defaultImage.imageData.ptr;
 			var scale: f32 = 0;
 			var blockType: u16 = 0;
 			if(isBlock) {
-				blockType = item.baseItem.block.?;
+				blockType = item.item.block.?;
 				vertices = model.len/2*6;
 				scale = 0.3;
 				pos = Vec3d{0.4, 0.55, -0.32};

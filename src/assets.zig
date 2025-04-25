@@ -341,7 +341,7 @@ fn registerBlock(assetFolder: []const u8, id: []const u8, zon: ZonElement) !void
 fn assignBlockItem(stringId: []const u8) !void {
 	const block = blocks_zig.getTypeById(stringId);
 	const item = items_zig.getByID(stringId) orelse unreachable;
-	item.block = block;
+	item.item().?.block = block;
 }
 
 fn registerBiome(numericId: u32, stringId: []const u8, zon: ZonElement) void {

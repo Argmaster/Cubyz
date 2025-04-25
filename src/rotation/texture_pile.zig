@@ -85,7 +85,7 @@ pub fn canBeChangedInto(oldBlock: Block, newBlock: Block, item: main.items.ItemS
 			if(amountChange <= 0) {
 				return .{.yes_dropsItems = @intCast(-amountChange)};
 			} else {
-				if(item.item == null or item.item.? != .baseItem or item.item.?.baseItem.block != newBlock.typ) return .no;
+				if(item.item == null or item.item.? != .baseItem or item.item.?.baseItem.item().?.block != newBlock.typ) return .no;
 				return .{.yes_costsItems = @intCast(amountChange)};
 			}
 		},
