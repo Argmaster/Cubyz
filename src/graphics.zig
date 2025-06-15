@@ -741,7 +741,7 @@ pub const TextBuffer = struct { // MARK: TextBuffer
 			var unicodeIterator = std.unicode.Utf8Iterator{.bytes = text, .i = 0};
 			var count: usize = 0;
 			var curChar = unicodeIterator.nextCodepoint() orelse return count;
-			while(true) switch(curChar) {
+			outer: while(true) switch(curChar) {
 				'*' => {
 					curChar = unicodeIterator.nextCodepoint() orelse break;
 				},
@@ -767,7 +767,7 @@ pub const TextBuffer = struct { // MARK: TextBuffer
 					count += 1;
 				},
 				'#' => {
-					for(0..7) |_| curChar = unicodeIterator.nextCodepoint() orelse break;
+					for(0..7) |_| curChar = unicodeIterator.nextCodepoint() orelse break :outer;
 				},
 				'§' => {
 					curChar = unicodeIterator.nextCodepoint() orelse break;
@@ -2588,7 +2588,7 @@ pub fn generateBlockTexture(blockType: u16) Texture {
 
 	const projMatrix = Mat4f.perspective(0.013, 1, 64, 256);
 	const oldViewMatrix = main.game.camera.viewMatrix;
-	main.game.camera.viewMatrix = Mat4f.identity().mul(Mat4f.rotationX(std.math.pi/4.0)).mul(Mat4f.rotationZ(-5.0*std.math.pi/4.0));
+	main.game.camera.viewMatrix = Mat4f.identity().mul(Mat4f.rotationX(std.math.pi/4.0)).mul(Mat4f.rotationZ(1.0*std.math.pi/4.0));
 	defer main.game.camera.viewMatrix = oldViewMatrix;
 	const uniforms = if(block.transparent()) &main.renderer.chunk_meshing.transparentUniforms else &main.renderer.chunk_meshing.uniforms;
 
@@ -2610,12 +2610,14 @@ pub fn generateBlockTexture(blockType: u16) Texture {
 		face.position.lightIndex = 0;
 	}
 	var allocation: SubAllocation = .{.start = 0, .len = 0};
-	main.renderer.chunk_meshing.faceBuffer.uploadData(faceData.items, &allocation);
+	main.renderer.chunk_meshing.faceBuffers[0].uploadData(faceData.items, &allocation);
+	defer main.renderer.chunk_meshing.faceBuffers[0].free(allocation);
 	var lightAllocation: SubAllocation = .{.start = 0, .len = 0};
-	main.renderer.chunk_meshing.lightBuffer.uploadData(&.{0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff}, &lightAllocation);
+	main.renderer.chunk_meshing.lightBuffers[0].uploadData(&.{0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff}, &lightAllocation);
+	defer main.renderer.chunk_meshing.lightBuffers[0].free(lightAllocation);
 
 	{
-		const i = 6; // Easily switch between the 8 rotations.
+		const i = 4; // Easily switch between the 8 diagonal coordinates.
 		var x: f64 = -65.5 + 1.5;
 		var y: f64 = -65.5 + 1.5;
 		var z: f64 = -92.631 + 1.5;
@@ -2671,7 +2673,6 @@ pub fn generateBlockTexture(blockType: u16) Texture {
 
 	c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
 
-	main.renderer.chunk_meshing.faceBuffer.free(allocation);
 	c.glViewport(0, 0, main.Window.width, main.Window.height);
 	c.glBlendFunc(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA);
 	return texture;
