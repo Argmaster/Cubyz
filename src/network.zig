@@ -434,7 +434,7 @@ pub const ConnectionManager = struct { // MARK: ConnectionManager
 			result.makeOnline();
 		}
 
-		const banned_ips: ZonElement = main.files.cwd().readToZon(main.globalAllocator, "banned_ips.zig.zon") catch .null;
+		const banned_ips: ZonElement = main.files.cwd().readToZon(main.globalAllocator, "banned_ips.zig.zon") catch ZonElement.initArray(main.globalAllocator);
 		result.banned.ensureCapacity(main.globalAllocator, banned_ips.array.items.len);
 		for(banned_ips.array.items) |ip| {
 			result.banned.appendAssumeCapacity(@intCast(ip.int));
