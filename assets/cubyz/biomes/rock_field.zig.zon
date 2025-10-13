@@ -11,7 +11,7 @@
 
 	.ground_structure = .{
 		"0 to 2 cubyz:slate",
-		"0 to 1 cubyz:mossy_cobblestone",
+		"0 to 1 cubyz:moss:cubyz:cobblestone",
 		"0 to 1 cubyz:cobblestone",
 		"0 to 1 cubyz:gravel",
 	},
@@ -27,7 +27,7 @@
 		.{
 			.id = "cubyz:boulder",
 			.chance = 0.032,
-			.block = "cubyz:mossy_cobblestone",
+			.block = "cubyz:moss:cubyz:cobblestone",
 			.size = 5,
 			.size_variance = 5,
 		},
