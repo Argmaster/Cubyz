@@ -9,7 +9,7 @@
 	.alwaysViewThrough = true,
 	.absorbedLight = 0x121012,
 	.model = "cubyz:flower/small",
-	.rotation = .carpet,
+	.rotation = "cubyz:carpet",
 	.texture_top = "cubyz:daisies/higher",
 	.texture_bottom = "cubyz:daisies/lower",
 	.texture = "cubyz:daisies/stem",
