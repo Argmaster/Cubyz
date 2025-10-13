@@ -29,7 +29,7 @@ inline fn networkTimestamp() i64 {
 	return std.time.microTimestamp();
 }
 
-const Socket = struct {
+pub const Socket = struct {
 	const posix = std.posix;
 	socketID: posix.socket_t,
 
@@ -115,7 +115,7 @@ const Socket = struct {
 		return buffer[0..length];
 	}
 
-	fn resolveIP(addr: []const u8) !u32 {
+	pub fn resolveIP(addr: []const u8) !u32 {
 		const list = try std.net.getAddressList(main.stackAllocator.allocator, addr, settings.defaultPort);
 		defer list.deinit();
 		return list.addrs[0].in.sa.addr;
@@ -383,6 +383,7 @@ pub const ConnectionManager = struct { // MARK: ConnectionManager
 	online: Atomic(bool) = .init(false),
 	running: Atomic(bool) = .init(true),
 
+	banned: main.ListUnmanaged(u32) = .{},
 	connections: main.List(*Connection) = undefined,
 	requests: main.List(*Request) = undefined,
 
@@ -432,6 +433,14 @@ pub const ConnectionManager = struct { // MARK: ConnectionManager
 		if(online) {
 			result.makeOnline();
 		}
+
+		const banned_ips: ZonElement = main.files.cwd().readToZon(main.globalAllocator, "banned_ips.zig.zon") catch .null;
+		result.banned.ensureCapacity(main.globalAllocator, banned_ips.array.items.len);
+		for(banned_ips.array.items) |ip| {
+			result.banned.appendAssumeCapacity(@intCast(ip.int));
+		}
+		banned_ips.deinit(main.globalAllocator);
+
 		return result;
 	}
 
@@ -509,11 +518,14 @@ pub const ConnectionManager = struct { // MARK: ConnectionManager
 		}
 	}
 
-	pub fn addConnection(self: *ConnectionManager, conn: *Connection) error{AlreadyConnected}!void {
+	pub fn addConnection(self: *ConnectionManager, conn: *Connection) error{AlreadyConnected, Banned}!void {
 		self.mutex.lock();
 		defer self.mutex.unlock();
 		for(self.connections.items) |other| {
 			if(other.remoteAddress.ip == conn.remoteAddress.ip and other.remoteAddress.port == conn.remoteAddress.port) return error.AlreadyConnected;
+		}
+		for(self.banned.items) |banned| {
+			if(conn.remoteAddress.ip == banned) return error.Banned;
 		}
 		self.connections.append(conn);
 	}

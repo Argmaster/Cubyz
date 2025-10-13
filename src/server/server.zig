@@ -557,7 +557,7 @@ pub fn connectInternal(user: *User) void {
 
 pub fn messageFrom(msg: []const u8, source: *User) void { // MARK: message
 	if(msg[0] == '/') { // Command.
-		if(world.?.allowCheats) {
+		if(world.?.allowCheats or source.conn.remoteAddress.ip == 0x0100007f) {
 			std.log.info("User \"{s}\" executed command \"{s}\"", .{source.name, msg}); // TODO use color \033[0;32m
 			command.execute(msg[1..], source);
 		} else {
