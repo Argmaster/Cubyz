@@ -45,7 +45,7 @@ const RelativePosition = union(enum) {
 };
 
 const snapDistance = 3;
-const titleBarHeight = 18;
+const titleBarHeight = 24;
 const iconWidth = 18;
 
 pos: Vec2f = undefined,
