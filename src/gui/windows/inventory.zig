@@ -45,11 +45,6 @@ pub fn onOpen() void {
 	const list = VerticalList.init(.{padding, padding + 16}, 300, 0);
 	// Some miscellanious slots and buttons:
 	// TODO: armor slots, backpack slot + stack-based backpack inventory, other items maybe?
-	{
-		const row = HorizontalList.init();
-		row.add(Button.initIcon(.{0, 0}, .{32, 32}, craftingIcon, true, gui.openWindowCallback("inventory_crafting")));
-		list.add(row);
-	}
 	for(0..2) |y| {
 		const row = HorizontalList.init();
 		for(0..10) |x| {
