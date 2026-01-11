@@ -253,7 +253,7 @@ pub const chunkRequest = struct { // MARK: chunkRequest
 				.wx = (x << voxelSizeShift + chunk.chunkShift) +% (basePosition[0] & positionMask),
 				.wy = (y << voxelSizeShift + chunk.chunkShift) +% (basePosition[1] & positionMask),
 				.wz = (z << voxelSizeShift + chunk.chunkShift) +% (basePosition[2] & positionMask),
-				.voxelSize = @as(u31, 1) << voxelSizeShift,
+				.lod = @enumFromInt(voxelSizeShift),
 			};
 			conn.user.?.increaseRefCount();
 			main.server.world.?.queueChunkAndDecreaseRefCount(request, conn.user.?);
@@ -266,7 +266,7 @@ pub const chunkRequest = struct { // MARK: chunkRequest
 		writer.writeVec(Vec3i, basePosition);
 		writer.writeInt(u16, renderDistance);
 		for(requests) |req| {
-			const voxelSizeShift: u5 = std.math.log2_int(u31, req.voxelSize);
+			const voxelSizeShift: u5 = std.math.log2_int(u31, req.voxelSize());
 			const positionMask = ~((@as(i32, 1) << voxelSizeShift + chunk.chunkShift) - 1);
 			writer.writeInt(i8, @intCast((req.wx -% (basePosition[0] & positionMask)) >> voxelSizeShift + chunk.chunkShift));
 			writer.writeInt(i8, @intCast((req.wy -% (basePosition[1] & positionMask)) >> voxelSizeShift + chunk.chunkShift));
@@ -285,7 +285,7 @@ pub const chunkTransmission = struct { // MARK: chunkTransmission
 			.wx = try reader.readInt(i32),
 			.wy = try reader.readInt(i32),
 			.wz = try reader.readInt(i32),
-			.voxelSize = try reader.readInt(u31),
+			.lod = @enumFromInt(try reader.readInt(u31)), // TODO: Potential crash site!
 		};
 		const ch = chunk.Chunk.init(pos);
 		try main.server.storage.ChunkCompression.loadChunk(ch, .client, reader.remaining);
@@ -293,7 +293,7 @@ pub const chunkTransmission = struct { // MARK: chunkTransmission
 	}
 	fn sendChunkOverTheNetwork(conn: *Connection, ch: *chunk.ServerChunk) void {
 		ch.mutex.lock();
-		const chunkData = main.server.storage.ChunkCompression.storeChunk(main.stackAllocator, &ch.super, .toClient, ch.super.pos.voxelSize != 1);
+		const chunkData = main.server.storage.ChunkCompression.storeChunk(main.stackAllocator, &ch.super, .toClient, ch.super.pos.voxelSize() != 1);
 		ch.mutex.unlock();
 		defer main.stackAllocator.free(chunkData);
 		var writer = utils.BinaryWriter.initCapacity(main.stackAllocator, chunkData.len + 16);
@@ -301,7 +301,7 @@ pub const chunkTransmission = struct { // MARK: chunkTransmission
 		writer.writeInt(i32, ch.super.pos.wx);
 		writer.writeInt(i32, ch.super.pos.wy);
 		writer.writeInt(i32, ch.super.pos.wz);
-		writer.writeInt(u31, ch.super.pos.voxelSize);
+		writer.writeInt(u31, @intFromEnum(ch.super.pos.lod));
 		writer.writeSlice(chunkData);
 		conn.send(.fast, id, writer.data.items); // TODO: Can this use the slow channel?
 	}
@@ -880,7 +880,7 @@ pub const blockEntityUpdate = struct { // MARK: blockEntityUpdate
 	}
 
 	pub fn sendClientDataUpdateToServer(conn: *Connection, pos: Vec3i) void {
-		const mesh = main.renderer.mesh_storage.getMesh(.initFromWorldPos(pos, 1)) orelse return;
+		const mesh = main.renderer.mesh_storage.getMesh(.initFromWorldPos(pos, .LOD0)) orelse return;
 		mesh.mutex.lock();
 		defer mesh.mutex.unlock();
 		const localPos = mesh.chunk.getLocalBlockPos(pos);

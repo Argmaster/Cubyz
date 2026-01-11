@@ -55,7 +55,7 @@ pub const StructureMapFragment = struct {
 				.wx = wx,
 				.wy = wy,
 				.wz = wz,
-				.voxelSize = voxelSize,
+				.lod = @enumFromInt(std.math.log2_int(u31, voxelSize)),
 			},
 			.voxelShift = @ctz(voxelSize),
 			.arena = .init(main.globalAllocator),
@@ -93,7 +93,7 @@ pub const StructureMapFragment = struct {
 	}
 
 	fn getIndex(self: *const StructureMapFragment, x: i32, y: i32, z: i32) usize {
-		std.debug.assert(x >= 0 and x < size*self.pos.voxelSize and y >= 0 and y < size*self.pos.voxelSize and z >= 0 and z < size*self.pos.voxelSize); // Coordinates out of range.
+		std.debug.assert(x >= 0 and x < size*self.pos.voxelSize() and y >= 0 and y < size*self.pos.voxelSize() and z >= 0 and z < size*self.pos.voxelSize()); // Coordinates out of range.
 		return @intCast(((x >> main.chunk.chunkShift + self.voxelShift)*chunkedSize + (y >> main.chunk.chunkShift + self.voxelShift))*chunkedSize + (z >> main.chunk.chunkShift + self.voxelShift));
 	}
 
@@ -105,15 +105,15 @@ pub const StructureMapFragment = struct {
 	}
 
 	pub fn addStructure(self: *StructureMapFragment, structure: Structure, min: Vec3i, max: Vec3i) void {
-		var x = min[0] & ~@as(i32, main.chunk.chunkMask << self.voxelShift | self.pos.voxelSize - 1);
+		var x = min[0] & ~@as(i32, main.chunk.chunkMask << self.voxelShift | self.pos.voxelSize() - 1);
 		while(x < max[0]) : (x += main.chunk.chunkSize << self.voxelShift) {
-			if(x < 0 or x >= size*self.pos.voxelSize) continue;
-			var y = min[1] & ~@as(i32, main.chunk.chunkMask << self.voxelShift | self.pos.voxelSize - 1);
+			if(x < 0 or x >= size*self.pos.voxelSize()) continue;
+			var y = min[1] & ~@as(i32, main.chunk.chunkMask << self.voxelShift | self.pos.voxelSize() - 1);
 			while(y < max[1]) : (y += main.chunk.chunkSize << self.voxelShift) {
-				if(y < 0 or y >= size*self.pos.voxelSize) continue;
-				var z = min[2] & ~@as(i32, main.chunk.chunkMask << self.voxelShift | self.pos.voxelSize - 1);
+				if(y < 0 or y >= size*self.pos.voxelSize()) continue;
+				var z = min[2] & ~@as(i32, main.chunk.chunkMask << self.voxelShift | self.pos.voxelSize() - 1);
 				while(z < max[2]) : (z += main.chunk.chunkSize << self.voxelShift) {
-					if(z < 0 or z >= size*self.pos.voxelSize) continue;
+					if(z < 0 or z >= size*self.pos.voxelSize()) continue;
 					self.tempData.lists[self.getIndex(x, y, z)].append(self.tempData.allocator, structure);
 				}
 			}
@@ -174,7 +174,7 @@ var memoryPool: main.heap.MemoryPool(StructureMapFragment) = undefined;
 
 fn cacheInit(pos: ChunkPosition) *StructureMapFragment {
 	const mapFragment = memoryPool.create();
-	mapFragment.init(main.stackAllocator, pos.wx, pos.wy, pos.wz, pos.voxelSize);
+	mapFragment.init(main.stackAllocator, pos.wx, pos.wy, pos.wz, pos.voxelSize());
 	for(profile.structureMapGenerators) |generator| {
 		generator.generate(mapFragment, profile.seed ^ generator.generatorSeed);
 	}
@@ -208,7 +208,7 @@ pub fn getOrGenerateFragment(wx: i32, wy: i32, wz: i32, voxelSize: u31) *Structu
 		.wx = wx & ~@as(i32, StructureMapFragment.sizeMask*voxelSize | voxelSize - 1),
 		.wy = wy & ~@as(i32, StructureMapFragment.sizeMask*voxelSize | voxelSize - 1),
 		.wz = wz & ~@as(i32, StructureMapFragment.sizeMask*voxelSize | voxelSize - 1),
-		.voxelSize = voxelSize,
+		.lod = @enumFromInt(std.math.log2_int(u31, voxelSize)),
 	};
 	const result = cache.findOrCreate(compare, cacheInit, null);
 	return result;

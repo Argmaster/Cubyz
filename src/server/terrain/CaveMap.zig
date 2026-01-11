@@ -30,7 +30,7 @@ pub const CaveMapFragment = struct { // MARK: CaveMapFragment
 				.wx = wx,
 				.wy = wy,
 				.wz = wz,
-				.voxelSize = voxelSize,
+				.lod = @enumFromInt(std.math.log2_int(u31, voxelSize)),
 			},
 			.voxelShift = @ctz(voxelSize),
 		};
@@ -133,8 +133,8 @@ pub const CaveMapView = struct { // MARK: CaveMapView
 	fragments: main.utils.Array3D(*CaveMapFragment),
 
 	pub fn init(allocator: NeverFailingAllocator, pos: ChunkPosition, size: u31, margin: u31) CaveMapView {
-		const widthShift = std.math.log2_int(u31, pos.voxelSize*CaveMapFragment.width);
-		const heightShift = std.math.log2_int(u31, pos.voxelSize*CaveMapFragment.height);
+		const widthShift = std.math.log2_int(u31, pos.voxelSize()*CaveMapFragment.width);
+		const heightShift = std.math.log2_int(u31, pos.voxelSize()*CaveMapFragment.height);
 		const widthMask = ~@as(i32, (@as(u31, 1) << widthShift) - 1);
 		const heightMask = ~@as(i32, (@as(u31, 1) << heightShift) - 1);
 		const lowerCorner = Vec3i{
@@ -168,7 +168,7 @@ pub const CaveMapView = struct { // MARK: CaveMapView
 					const x: usize = @intCast((wx -% lowerCorner[0]) >> widthShift);
 					const y: usize = @intCast((wy -% lowerCorner[1]) >> widthShift);
 					const z: usize = @intCast((wz -% lowerCorner[2]) >> heightShift);
-					result.fragments.ptr(x, y, z).* = getOrGenerateFragment(wx, wy, wz, pos.voxelSize);
+					result.fragments.ptr(x, y, z).* = getOrGenerateFragment(wx, wy, wz, pos.voxelSize());
 				}
 			}
 		}
@@ -190,7 +190,7 @@ pub const CaveMapView = struct { // MARK: CaveMapView
 
 		const fragmentRelX = wx - fragment.pos.wx;
 		const fragmentRelY = wy - fragment.pos.wy;
-		const fragmentRelZ = @divFloor(wz - fragment.pos.wz, self.pos.voxelSize);
+		const fragmentRelZ = @divFloor(wz - fragment.pos.wz, self.pos.voxelSize());
 		const height = fragment.getColumnData(fragmentRelX, fragmentRelY);
 		return (height & @as(u64, 1) << @intCast(fragmentRelZ)) != 0;
 	}
@@ -224,7 +224,7 @@ pub const CaveMapView = struct { // MARK: CaveMapView
 		const z: usize = @intCast((wz -% self.lowerCorner[2]) >> self.heightShift);
 		const fragment = self.fragments.get(x, y, z);
 
-		const relativeZ = @divFloor(wz -% fragment.pos.wz, self.pos.voxelSize);
+		const relativeZ = @divFloor(wz -% fragment.pos.wz, self.pos.voxelSize());
 		std.debug.assert(relativeZ >= 0 and relativeZ < CaveMapFragment.height);
 		const fragmentRelX = wx - fragment.pos.wx;
 		const fragmentRelY = wy - fragment.pos.wy;
@@ -237,7 +237,7 @@ pub const CaveMapView = struct { // MARK: CaveMapView
 			height = ~height;
 		}
 		const result: i32 = relativeZ + @ctz(height);
-		return result*self.pos.voxelSize +% fragment.pos.wz -% self.pos.wz;
+		return result*self.pos.voxelSize() +% fragment.pos.wz -% self.pos.wz;
 	}
 
 	pub fn findTerrainChangeBelow(self: CaveMapView, relX: i32, relY: i32, relZ: i32) i32 {
@@ -249,7 +249,7 @@ pub const CaveMapView = struct { // MARK: CaveMapView
 		const z: usize = @intCast((wz -% self.lowerCorner[2]) >> self.heightShift);
 		const fragment = self.fragments.get(x, y, z);
 
-		const relativeZ = @divFloor(wz -% fragment.pos.wz, self.pos.voxelSize);
+		const relativeZ = @divFloor(wz -% fragment.pos.wz, self.pos.voxelSize());
 		std.debug.assert(relativeZ >= 0 and relativeZ < CaveMapFragment.height);
 		const fragmentRelX = wx - fragment.pos.wx;
 		const fragmentRelY = wy - fragment.pos.wy;
@@ -262,7 +262,7 @@ pub const CaveMapView = struct { // MARK: CaveMapView
 			height = ~height;
 		}
 		const result: i32 = relativeZ - @clz(height);
-		return result*self.pos.voxelSize +% fragment.pos.wz -% self.pos.wz;
+		return result*self.pos.voxelSize() +% fragment.pos.wz -% self.pos.wz;
 	}
 };
 
@@ -277,7 +277,7 @@ var memoryPool: main.heap.MemoryPool(CaveMapFragment) = undefined;
 
 fn cacheInit(pos: ChunkPosition) *CaveMapFragment {
 	const mapFragment = memoryPool.create();
-	mapFragment.init(pos.wx, pos.wy, pos.wz, pos.voxelSize);
+	mapFragment.init(pos.wx, pos.wy, pos.wz, pos.voxelSize());
 	for(profile.caveGenerators) |generator| {
 		generator.generate(mapFragment, profile.seed ^ generator.generatorSeed);
 	}
@@ -310,7 +310,7 @@ fn getOrGenerateFragment(wx: i32, wy: i32, wz: i32, voxelSize: u31) *CaveMapFrag
 		.wx = wx & ~@as(i32, CaveMapFragment.widthMask*voxelSize | voxelSize - 1),
 		.wy = wy & ~@as(i32, CaveMapFragment.widthMask*voxelSize | voxelSize - 1),
 		.wz = wz & ~@as(i32, CaveMapFragment.heightMask*voxelSize | voxelSize - 1),
-		.voxelSize = voxelSize,
+		.lod = @enumFromInt(std.math.log2_int(u31, voxelSize)),
 	};
 	const result = cache.findOrCreate(compare, cacheInit, null);
 	return result;

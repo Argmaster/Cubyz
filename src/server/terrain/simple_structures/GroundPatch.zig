@@ -89,7 +89,7 @@ pub fn generate(self: *GroundPatch, mode: GenerationMode, x: i32, y: i32, z: i32
 					pz = @max(pz, surfaceHeight -% chunk.super.pos.wz);
 				}
 				if(@abs(startHeight -% baseHeight) > 5) continue;
-				while(pz <= startHeight) : (pz += chunk.super.pos.voxelSize) {
+				while(pz <= startHeight) : (pz += chunk.super.pos.voxelSize()) {
 					if(dist <= self.smoothness or (dist - self.smoothness)/(1 - self.smoothness) < random.nextFloat(seed)) {
 						if(chunk.liesInChunk(px, py, pz)) {
 							chunk.updateBlockInGeneration(px, py, pz, self.block);

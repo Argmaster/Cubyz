@@ -38,7 +38,7 @@ pub fn init(parameters: ZonElement) void {
 }
 
 pub fn generate(worldSeed: u64, chunk: *main.chunk.ServerChunk, caveMap: CaveMap.CaveMapView, biomeMap: CaveBiomeMap.CaveBiomeMapView) void {
-	if(chunk.super.pos.voxelSize > 2) return;
+	if(chunk.super.pos.voxelSize() > 2) return;
 	const size = chunk.super.width;
 	// Generate caves from all nearby chunks:
 	var x = chunk.super.pos.wx -% main.chunk.chunkSize;

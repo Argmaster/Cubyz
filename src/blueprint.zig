@@ -124,11 +124,11 @@ pub const Blueprint = struct {
 		const indexEndZ: i32 = @min(@as(i32, chunk.super.width) - pos[2], @as(i32, @intCast(self.blocks.height)));
 
 		var indexX: u31 = @max(0, -pos[0]);
-		while(indexX < indexEndX) : (indexX += chunk.super.pos.voxelSize) {
+		while(indexX < indexEndX) : (indexX += chunk.super.pos.voxelSize()) {
 			var indexY: u31 = @max(0, -pos[1]);
-			while(indexY < indexEndY) : (indexY += chunk.super.pos.voxelSize) {
+			while(indexY < indexEndY) : (indexY += chunk.super.pos.voxelSize()) {
 				var indexZ: u31 = @max(0, -pos[2]);
-				while(indexZ < indexEndZ) : (indexZ += chunk.super.pos.voxelSize) {
+				while(indexZ < indexEndZ) : (indexZ += chunk.super.pos.voxelSize()) {
 					const block = self.blocks.get(indexX, indexY, indexZ);
 
 					if(block.typ == voidType) continue;

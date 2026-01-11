@@ -257,16 +257,15 @@ pub const ChunkPosition = struct { // MARK: ChunkPosition
 	wx: i32,
 	wy: i32,
 	wz: i32,
-	voxelSize: u31,
+	lod: Lod,
 
-	pub fn initFromWorldPos(pos: Vec3i, voxelSize: u31) ChunkPosition {
-		const mask = ~@as(i32, voxelSize*chunkSize - 1);
-		return .{.wx = pos[0] & mask, .wy = pos[1] & mask, .wz = pos[2] & mask, .voxelSize = voxelSize};
+	pub fn initFromWorldPos(pos: Vec3i, lod: Lod) ChunkPosition {
+		return .{.wx = pos[0] & lod.localMask(), .wy = pos[1] & lod.localMask(), .wz = pos[2] & lod.localMask(), .lod = lod};
 	}
 
 	pub fn hashCode(self: ChunkPosition) u32 {
 		const shift: u5 = @truncate(@min(@ctz(self.wx), @ctz(self.wy), @ctz(self.wz)));
-		return (((@as(u32, @bitCast(self.wx)) >> shift)*%31 +% (@as(u32, @bitCast(self.wy)) >> shift))*%31 +% (@as(u32, @bitCast(self.wz)) >> shift))*%31 +% self.voxelSize; // TODO: Can I use one of zigs standard hash functions?
+		return (((@as(u32, @bitCast(self.wx)) >> shift)*%31 +% (@as(u32, @bitCast(self.wy)) >> shift))*%31 +% (@as(u32, @bitCast(self.wz)) >> shift))*%31 +% self.voxelSize(); // TODO: Can I use one of zigs standard hash functions?
 	}
 
 	pub fn equals(self: ChunkPosition, other: anytype) bool {
@@ -287,8 +286,12 @@ pub const ChunkPosition = struct { // MARK: ChunkPosition
 		@compileError("Unsupported");
 	}
 
+	pub fn voxelSize(self: ChunkPosition) u31 {
+		return self.lod.voxelSize();
+	}
+
 	pub fn getMinDistanceSquared(self: ChunkPosition, playerPosition: Vec3i) i64 {
-		const halfWidth: i32 = self.voxelSize*@divExact(chunkSize, 2);
+		const halfWidth: i32 = self.voxelSize()*@divExact(chunkSize, 2);
 		var dx: i64 = @abs(self.wx +% halfWidth -% playerPosition[0]);
 		var dy: i64 = @abs(self.wy +% halfWidth -% playerPosition[1]);
 		var dz: i64 = @abs(self.wz +% halfWidth -% playerPosition[2]);
@@ -300,7 +303,7 @@ pub const ChunkPosition = struct { // MARK: ChunkPosition
 
 	fn getMinDistanceSquaredFloat(self: ChunkPosition, playerPosition: Vec3d) f64 {
 		const adjustedPosition = @mod(playerPosition + @as(Vec3d, @splat(1 << 31)), @as(Vec3d, @splat(1 << 32))) - @as(Vec3d, @splat(1 << 31));
-		const halfWidth: f64 = @floatFromInt(self.voxelSize*@divExact(chunkSize, 2));
+		const halfWidth: f64 = @floatFromInt(self.voxelSize()*@divExact(chunkSize, 2));
 		var dx = @abs(@as(f64, @floatFromInt(self.wx)) + halfWidth - adjustedPosition[0]);
 		var dy = @abs(@as(f64, @floatFromInt(self.wy)) + halfWidth - adjustedPosition[1]);
 		var dz = @abs(@as(f64, @floatFromInt(self.wz)) + halfWidth - adjustedPosition[2]);
@@ -312,7 +315,7 @@ pub const ChunkPosition = struct { // MARK: ChunkPosition
 
 	pub fn getMaxDistanceSquared(self: ChunkPosition, playerPosition: Vec3d) f64 {
 		const adjustedPosition = @mod(playerPosition + @as(Vec3d, @splat(1 << 31)), @as(Vec3d, @splat(1 << 32))) - @as(Vec3d, @splat(1 << 31));
-		const halfWidth: f64 = @floatFromInt(self.voxelSize*@divExact(chunkSize, 2));
+		const halfWidth: f64 = @floatFromInt(self.voxelSize()*@divExact(chunkSize, 2));
 		var dx = @abs(@as(f64, @floatFromInt(self.wx)) + halfWidth - adjustedPosition[0]);
 		var dy = @abs(@as(f64, @floatFromInt(self.wy)) + halfWidth - adjustedPosition[1]);
 		var dz = @abs(@as(f64, @floatFromInt(self.wz)) + halfWidth - adjustedPosition[2]);
@@ -324,7 +327,7 @@ pub const ChunkPosition = struct { // MARK: ChunkPosition
 
 	pub fn getCenterDistanceSquared(self: ChunkPosition, playerPosition: Vec3d) f64 {
 		const adjustedPosition = @mod(playerPosition + @as(Vec3d, @splat(1 << 31)), @as(Vec3d, @splat(1 << 32))) - @as(Vec3d, @splat(1 << 31));
-		const halfWidth: f64 = @floatFromInt(self.voxelSize*@divExact(chunkSize, 2));
+		const halfWidth: f64 = @floatFromInt(self.voxelSize()*@divExact(chunkSize, 2));
 		const dx = @as(f64, @floatFromInt(self.wx)) + halfWidth - adjustedPosition[0];
 		const dy = @as(f64, @floatFromInt(self.wy)) + halfWidth - adjustedPosition[1];
 		const dz = @as(f64, @floatFromInt(self.wz)) + halfWidth - adjustedPosition[2];
@@ -332,7 +335,7 @@ pub const ChunkPosition = struct { // MARK: ChunkPosition
 	}
 
 	pub fn getPriority(self: ChunkPosition, playerPos: Vec3d) f32 {
-		return -@as(f32, @floatCast(self.getMinDistanceSquaredFloat(playerPos)))/@as(f32, @floatFromInt(self.voxelSize*self.voxelSize)) + 2*@as(f32, @floatFromInt(std.math.log2_int(u31, self.voxelSize)*chunkSize*chunkSize));
+		return -@as(f32, @floatCast(self.getMinDistanceSquaredFloat(playerPos)))/@as(f32, @floatFromInt(self.voxelSize()*self.voxelSize())) + 2*@as(f32, @floatFromInt(self.lod.toInt()*chunkSize*chunkSize));
 	}
 };
 
@@ -399,14 +402,13 @@ pub const Chunk = struct { // MARK: Chunk
 
 	pub fn init(pos: ChunkPosition) *Chunk {
 		const self = memoryPool.create();
-		std.debug.assert((pos.voxelSize - 1 & pos.voxelSize) == 0);
-		std.debug.assert(@mod(pos.wx, pos.voxelSize) == 0 and @mod(pos.wy, pos.voxelSize) == 0 and @mod(pos.wz, pos.voxelSize) == 0);
-		const voxelSizeShift: u5 = @intCast(std.math.log2_int(u31, pos.voxelSize));
+		std.debug.assert(@mod(pos.wx, pos.voxelSize()) == 0 and @mod(pos.wy, pos.voxelSize()) == 0 and @mod(pos.wz, pos.voxelSize()) == 0);
+		const voxelSizeShift: u5 = @intCast(std.math.log2_int(u31, pos.voxelSize()));
 		self.* = Chunk{
 			.pos = pos,
-			.width = pos.voxelSize*chunkSize,
+			.width = pos.voxelSize()*chunkSize,
 			.voxelSizeShift = voxelSizeShift,
-			.voxelSizeMask = pos.voxelSize - 1,
+			.voxelSizeMask = pos.voxelSize() - 1,
 			.blockPosToEntityDataMap = .{},
 			.blockPosToEntityDataMapMutex = .{},
 		};
@@ -496,15 +498,15 @@ pub const ServerChunk = struct { // MARK: ServerChunk
 
 	pub fn initAndIncreaseRefCount(pos: ChunkPosition) *ServerChunk {
 		const self = serverPool.create();
-		std.debug.assert((pos.voxelSize - 1 & pos.voxelSize) == 0);
-		std.debug.assert(@mod(pos.wx, pos.voxelSize) == 0 and @mod(pos.wy, pos.voxelSize) == 0 and @mod(pos.wz, pos.voxelSize) == 0);
-		const voxelSizeShift: u5 = @intCast(std.math.log2_int(u31, pos.voxelSize));
+		std.debug.assert((pos.voxelSize() - 1 & pos.voxelSize()) == 0);
+		std.debug.assert(@mod(pos.wx, pos.voxelSize()) == 0 and @mod(pos.wy, pos.voxelSize()) == 0 and @mod(pos.wz, pos.voxelSize()) == 0);
+		const voxelSizeShift: u5 = @intCast(std.math.log2_int(u31, pos.voxelSize()));
 		self.* = ServerChunk{
 			.super = .{
 				.pos = pos,
-				.width = pos.voxelSize*chunkSize,
+				.width = pos.voxelSize()*chunkSize,
 				.voxelSizeShift = voxelSizeShift,
-				.voxelSizeMask = pos.voxelSize - 1,
+				.voxelSizeMask = pos.voxelSize() - 1,
 				.blockPosToEntityDataMap = .{},
 				.blockPosToEntityDataMapMutex = .{},
 			},
@@ -681,7 +683,7 @@ pub const ServerChunk = struct { // MARK: ServerChunk
 	pub fn save(self: *ServerChunk, world: *main.server.ServerWorld) void {
 		self.mutex.lock();
 		defer self.mutex.unlock();
-		if(self.shouldStoreNeighbors and self.super.pos.voxelSize == 1) {
+		if(self.shouldStoreNeighbors and self.super.pos.voxelSize() == 1) {
 			// Store all the neighbor chunks as well:
 			self.mutex.unlock();
 			defer self.mutex.lock();
@@ -696,7 +698,7 @@ pub const ServerChunk = struct { // MARK: ServerChunk
 							.wx = self.super.pos.wx +% dx,
 							.wy = self.super.pos.wy +% dy,
 							.wz = self.super.pos.wz +% dz,
-							.voxelSize = 1,
+							.lod = .LOD0,
 						});
 						defer ch.decreaseRefCount();
 						ch.mutex.lock();
@@ -708,7 +710,7 @@ pub const ServerChunk = struct { // MARK: ServerChunk
 				}
 			}
 		}
-		if(!self.wasStored and self.super.pos.voxelSize == 1) {
+		if(!self.wasStored and self.super.pos.voxelSize() == 1) {
 			// Store the surrounding map pieces as well:
 			self.mutex.unlock();
 			defer self.mutex.lock();
@@ -718,7 +720,7 @@ pub const ServerChunk = struct { // MARK: ServerChunk
 				for(0..2) |dy| {
 					const mapX = mapStartX +% main.server.terrain.SurfaceMap.MapFragment.mapSize*@as(i32, @intCast(dx));
 					const mapY = mapStartY +% main.server.terrain.SurfaceMap.MapFragment.mapSize*@as(i32, @intCast(dy));
-					const map = main.server.terrain.SurfaceMap.getOrGenerateFragment(mapX, mapY, self.super.pos.voxelSize);
+					const map = main.server.terrain.SurfaceMap.getOrGenerateFragment(mapX, mapY, self.super.pos.voxelSize());
 					if(!map.wasStored.swap(true, .monotonic)) {
 						map.save(null, .{});
 					}
@@ -728,27 +730,27 @@ pub const ServerChunk = struct { // MARK: ServerChunk
 		self.wasStored = true;
 		if(self.wasChanged) {
 			const pos = self.super.pos;
-			const regionSize = pos.voxelSize*chunkSize*main.server.storage.RegionFile.regionSize;
+			const regionSize = pos.voxelSize()*chunkSize*main.server.storage.RegionFile.regionSize;
 			const regionMask: i32 = regionSize - 1;
-			const region = main.server.storage.loadRegionFileAndIncreaseRefCount(pos.wx & ~regionMask, pos.wy & ~regionMask, pos.wz & ~regionMask, pos.voxelSize);
+			const region = main.server.storage.loadRegionFileAndIncreaseRefCount(pos.wx & ~regionMask, pos.wy & ~regionMask, pos.wz & ~regionMask, pos.voxelSize());
 			defer region.decreaseRefCount();
 			const data = main.server.storage.ChunkCompression.storeChunk(main.stackAllocator, &self.super, .toDisk, false);
 			defer main.stackAllocator.free(data);
 			region.storeChunk(
 				data,
-				@as(usize, @intCast(pos.wx -% region.pos.wx))/pos.voxelSize/chunkSize,
-				@as(usize, @intCast(pos.wy -% region.pos.wy))/pos.voxelSize/chunkSize,
-				@as(usize, @intCast(pos.wz -% region.pos.wz))/pos.voxelSize/chunkSize,
+				@as(usize, @intCast(pos.wx -% region.pos.wx))/pos.voxelSize()/chunkSize,
+				@as(usize, @intCast(pos.wy -% region.pos.wy))/pos.voxelSize()/chunkSize,
+				@as(usize, @intCast(pos.wz -% region.pos.wz))/pos.voxelSize()/chunkSize,
 			);
 
 			self.wasChanged = false;
 			// Update the next lod chunk:
-			if(pos.voxelSize != 1 << settings.highestSupportedLod) {
+			if(pos.voxelSize() != 1 << settings.highestSupportedLod) {
 				var nextPos = pos;
-				nextPos.wx &= ~@as(i32, pos.voxelSize*chunkSize);
-				nextPos.wy &= ~@as(i32, pos.voxelSize*chunkSize);
-				nextPos.wz &= ~@as(i32, pos.voxelSize*chunkSize);
-				nextPos.voxelSize *= 2;
+				nextPos.wx &= ~@as(i32, pos.voxelSize()*chunkSize);
+				nextPos.wy &= ~@as(i32, pos.voxelSize()*chunkSize);
+				nextPos.wz &= ~@as(i32, pos.voxelSize()*chunkSize);
+				nextPos.lod = nextPos.lod.next();
 				const nextHigherLod = world.getOrGenerateChunkAndIncreaseRefCount(nextPos);
 				defer nextHigherLod.decreaseRefCount();
 				nextHigherLod.updateFromLowerResolution(self);

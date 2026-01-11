@@ -50,11 +50,11 @@ pub fn generate(self: *Boulder, _: GenerationMode, x: i32, y: i32, z: i32, chunk
 	// This ensures that the entire boulder is inside of a square with sidelength 2*radius.
 	const maxRadius: i32 = @intFromFloat(@ceil(radius));
 	var px = chunk.startIndex(x - maxRadius);
-	while(px < x + maxRadius) : (px += chunk.super.pos.voxelSize) {
+	while(px < x + maxRadius) : (px += chunk.super.pos.voxelSize()) {
 		var py = chunk.startIndex(y - maxRadius);
-		while(py < y + maxRadius) : (py += chunk.super.pos.voxelSize) {
+		while(py < y + maxRadius) : (py += chunk.super.pos.voxelSize()) {
 			var pz = chunk.startIndex(z - maxRadius);
-			while(pz < z + maxRadius) : (pz += chunk.super.pos.voxelSize) {
+			while(pz < z + maxRadius) : (pz += chunk.super.pos.voxelSize()) {
 				if(!chunk.liesInChunk(px, py, pz)) continue;
 				var potential: f32 = 0;
 				for(&pointCloud) |point| {

@@ -40,14 +40,14 @@ fn adjustToCaveMap(biomeMap: CaveBiomeMapView, caveMap: CaveMapView, wx: i32, wy
 			if(caveMap.isSolid(relX, relY, relZ)) {
 				relZ = caveMap.findTerrainChangeAbove(relX, relY, relZ);
 			} else {
-				relZ = caveMap.findTerrainChangeBelow(relX, relY, relZ) + caveMap.pos.voxelSize;
+				relZ = caveMap.findTerrainChangeBelow(relX, relY, relZ) + caveMap.pos.voxelSize();
 			}
 			if(relZ & ~@as(i32, 31) != wz -% caveMap.pos.wz & ~@as(i32, 31)) return null; // Too far from the surface.
 		},
 		.ceiling => {
 			isCeiling = true;
 			if(caveMap.isSolid(relX, relY, relZ)) {
-				relZ = caveMap.findTerrainChangeBelow(relX, relY, relZ) - caveMap.pos.voxelSize;
+				relZ = caveMap.findTerrainChangeBelow(relX, relY, relZ) - caveMap.pos.voxelSize();
 			} else {
 				relZ = caveMap.findTerrainChangeAbove(relX, relY, relZ);
 			}
@@ -58,12 +58,12 @@ fn adjustToCaveMap(biomeMap: CaveBiomeMapView, caveMap: CaveMapView, wx: i32, wy
 				if(caveMap.isSolid(relX, relY, relZ)) {
 					relZ = caveMap.findTerrainChangeAbove(relX, relY, relZ);
 				} else {
-					relZ = caveMap.findTerrainChangeBelow(relX, relY, relZ) + caveMap.pos.voxelSize;
+					relZ = caveMap.findTerrainChangeBelow(relX, relY, relZ) + caveMap.pos.voxelSize();
 				}
 			} else {
 				isCeiling = true;
 				if(caveMap.isSolid(relX, relY, relZ)) {
-					relZ = caveMap.findTerrainChangeBelow(relX, relY, relZ) - caveMap.pos.voxelSize;
+					relZ = caveMap.findTerrainChangeBelow(relX, relY, relZ) - caveMap.pos.voxelSize();
 				} else {
 					relZ = caveMap.findTerrainChangeAbove(relX, relY, relZ);
 				}
@@ -89,14 +89,14 @@ fn adjustToCaveMap(biomeMap: CaveBiomeMapView, caveMap: CaveMapView, wx: i32, wy
 }
 
 pub fn generate(map: *StructureMapFragment, worldSeed: u64) void {
-	const size = StructureMapFragment.size*map.pos.voxelSize;
+	const size = StructureMapFragment.size*map.pos.voxelSize();
 	const biomeMap = CaveBiomeMapView.init(main.stackAllocator, map.pos, size, 32);
 	defer biomeMap.deinit();
 	const caveMap = CaveMapView.init(main.stackAllocator, map.pos, size, 32);
 	defer caveMap.deinit(main.stackAllocator);
 	const margin = 16;
 	const marginZ = 32;
-	if(map.pos.voxelSize <= 4) {
+	if(map.pos.voxelSize() <= 4) {
 		const blueNoise = noise.BlueNoise.getRegionData(main.stackAllocator, map.pos.wx -% margin, map.pos.wy -% margin, size + 2*margin, size + 2*margin);
 		defer main.stackAllocator.free(blueNoise);
 		var z: i32 = -32;
@@ -143,9 +143,9 @@ pub fn generate(map: *StructureMapFragment, worldSeed: u64) void {
 		}
 	} else { // TODO: Make this case work with cave-structures. Low priority because caves aren't even generated this far out.
 		var px: i32 = 0;
-		while(px < size + 2*margin) : (px += map.pos.voxelSize) {
+		while(px < size + 2*margin) : (px += map.pos.voxelSize()) {
 			var py: i32 = 0;
-			while(py < size + 2*margin) : (py += map.pos.voxelSize) {
+			while(py < size + 2*margin) : (py += map.pos.voxelSize()) {
 				const wpx = px -% margin +% map.pos.wx;
 				const wpy = py -% margin +% map.pos.wy;
 
@@ -158,7 +158,7 @@ pub fn generate(map: *StructureMapFragment, worldSeed: u64) void {
 				for(biome.vegetationModels) |*model| { // TODO: Could probably use an alias table here.
 					var adaptedChance = model.chance/16;
 					// Increase chance if there are less spawn points considered. Messes up positions, but at that distance density matters more.
-					adaptedChance = 1 - std.math.pow(f32, 1 - adaptedChance, @as(f32, @floatFromInt(map.pos.voxelSize*map.pos.voxelSize)));
+					adaptedChance = 1 - std.math.pow(f32, 1 - adaptedChance, @as(f32, @floatFromInt(map.pos.voxelSize()*map.pos.voxelSize())));
 					if(randomValue < adaptedChance) {
 						const heightFinalized = adjustToCaveMap(biomeMap, caveMap, wpx, wpy, map.pos.wz +% relZ, model, &seed) orelse break;
 						const data = map.allocator.create(SimpleStructure);

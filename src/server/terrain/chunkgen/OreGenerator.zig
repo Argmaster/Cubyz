@@ -33,7 +33,7 @@ pub fn init(parameters: ZonElement) void {
 pub fn generate(worldSeed: u64, chunk: *main.chunk.ServerChunk, caveMap: CaveMap.CaveMapView, biomeMap: CaveBiomeMap.CaveBiomeMapView) void {
 	_ = caveMap;
 	_ = biomeMap;
-	if(chunk.super.pos.voxelSize != 1) return;
+	if(chunk.super.pos.voxelSize() != 1) return;
 	const cx = chunk.super.pos.wx >> main.chunk.chunkShift;
 	const cy = chunk.super.pos.wy >> main.chunk.chunkShift;
 	const cz = chunk.super.pos.wz >> main.chunk.chunkShift;

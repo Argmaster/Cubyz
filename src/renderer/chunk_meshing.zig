@@ -410,13 +410,13 @@ pub const PrimitiveMesh = struct { // MARK: PrimitiveMesh
 	}
 
 	fn getLightAt(parent: *ChunkMesh, x: i32, y: i32, z: i32) [6]u8 {
-		const wx = parent.pos.wx +% x*parent.pos.voxelSize;
-		const wy = parent.pos.wy +% y*parent.pos.voxelSize;
-		const wz = parent.pos.wz +% z*parent.pos.voxelSize;
+		const wx = parent.pos.wx +% x*parent.pos.voxelSize();
+		const wy = parent.pos.wy +% y*parent.pos.voxelSize();
+		const wz = parent.pos.wz +% z*parent.pos.voxelSize();
 		if(x == x & chunk.chunkMask and y == y & chunk.chunkMask and z == z & chunk.chunkMask) {
 			return getValues(parent, wx, wy, wz);
 		}
-		const neighborMesh = mesh_storage.getMesh(.{.wx = wx, .wy = wy, .wz = wz, .voxelSize = parent.pos.voxelSize}) orelse return .{0, 0, 0, 0, 0, 0};
+		const neighborMesh = mesh_storage.getMesh(.{.wx = wx, .wy = wy, .wz = wz, .lod = parent.pos.lod}) orelse return .{0, 0, 0, 0, 0, 0};
 		return getValues(neighborMesh, wx, wy, wz);
 	}
 
@@ -461,7 +461,7 @@ pub const PrimitiveMesh = struct { // MARK: PrimitiveMesh
 				const weight: f32 = 1.0/4.0;
 				const finalPos = startPos +% @as(Vec3i, @intCast(@abs(direction.textureX())))*@as(Vec3i, @splat(dx)) +% @as(Vec3i, @intCast(@abs(direction.textureY()*@as(Vec3i, @splat(dy)))));
 				var lightVal: [6]u8 = getLightAt(parent, finalPos[0], finalPos[1], finalPos[2]);
-				if(parent.pos.voxelSize == 1) {
+				if(parent.pos.voxelSize() == 1) {
 					const nextVal = getLightAt(parent, finalPos[0] +% direction.relX(), finalPos[1] +% direction.relY(), finalPos[2] +% direction.relZ());
 					for(0..6) |i| {
 						const diff: u8 = @min(8, lightVal[i] -| nextVal[i]);
@@ -686,12 +686,12 @@ pub const ChunkMesh = struct { // MARK: ChunkMesh
 		const self = mesh_storage.meshMemoryPool.create();
 		self.* = ChunkMesh{
 			.pos = pos,
-			.size = chunk.chunkSize*pos.voxelSize,
+			.size = chunk.chunkSize*pos.voxelSize(),
 			.opaqueMesh = .{
-				.lod = @intCast(std.math.log2_int(u32, pos.voxelSize)),
+				.lod = @intCast(std.math.log2_int(u32, pos.voxelSize())),
 			},
 			.transparentMesh = .{
-				.lod = @intCast(std.math.log2_int(u32, pos.voxelSize)),
+				.lod = @intCast(std.math.log2_int(u32, pos.voxelSize())),
 			},
 			.chunk = ch,
 			.lightingData = .{
@@ -717,7 +717,7 @@ pub const ChunkMesh = struct { // MARK: ChunkMesh
 		self.blockBreakingFaces.deinit();
 		main.globalAllocator.free(self.blockBreakingFacesSortingData);
 		main.globalAllocator.free(self.lightList);
-		lightBuffers[std.math.log2_int(u32, self.pos.voxelSize)].free(self.lightAllocation);
+		lightBuffers[std.math.log2_int(u32, self.pos.voxelSize())].free(self.lightAllocation);
 		mesh_storage.meshMemoryPool.destroy(self);
 	}
 
@@ -795,14 +795,14 @@ pub const ChunkMesh = struct { // MARK: ChunkMesh
 			var allSun: bool = self.chunk.data.palette().len == 1 and self.chunk.data.palette()[0].load(.unordered).typ == 0;
 			var sunStarters: [chunk.chunkSize*chunk.chunkSize]chunk.BlockPos = undefined;
 			var index: usize = 0;
-			const lightStartMap = mesh_storage.getLightMapPiece(self.pos.wx, self.pos.wy, self.pos.voxelSize) orelse break :sunLight;
+			const lightStartMap = mesh_storage.getLightMapPiece(self.pos.wx, self.pos.wy, self.pos.voxelSize()) orelse break :sunLight;
 			var x: u8 = 0;
 			while(x < chunk.chunkSize) : (x += 1) {
 				var y: u8 = 0;
 				while(y < chunk.chunkSize) : (y += 1) {
-					const startHeight: i32 = lightStartMap.getHeight(self.pos.wx + x*self.pos.voxelSize, self.pos.wy + y*self.pos.voxelSize);
+					const startHeight: i32 = lightStartMap.getHeight(self.pos.wx + x*self.pos.voxelSize(), self.pos.wy + y*self.pos.voxelSize());
 					const relHeight = startHeight -% self.pos.wz;
-					if(relHeight < chunk.chunkSize*self.pos.voxelSize) {
+					if(relHeight < chunk.chunkSize*self.pos.voxelSize()) {
 						sunStarters[index] = .fromCoords(@intCast(x), @intCast(y), chunk.chunkSize - 1);
 						index += 1;
 					} else {
@@ -837,9 +837,9 @@ pub const ChunkMesh = struct { // MARK: ChunkMesh
 				var dz: i32 = -1;
 				while(dz <= 1) : (dz += 1) {
 					var pos = self.pos;
-					pos.wx +%= pos.voxelSize*chunk.chunkSize*dx;
-					pos.wy +%= pos.voxelSize*chunk.chunkSize*dy;
-					pos.wz +%= pos.voxelSize*chunk.chunkSize*dz;
+					pos.wx +%= pos.voxelSize()*chunk.chunkSize*dx;
+					pos.wy +%= pos.voxelSize()*chunk.chunkSize*dy;
+					pos.wz +%= pos.voxelSize()*chunk.chunkSize*dz;
 					const neighborMesh = mesh_storage.getMesh(pos) orelse continue;
 
 					const shiftSelf: u5 = @intCast(((dx + 1)*3 + dy + 1)*3 + dz + 1);
@@ -1212,7 +1212,7 @@ pub const ChunkMesh = struct { // MARK: ChunkMesh
 			const neighborPos, const chunkLocation = blockPos.neighbor(neighbor);
 
 			if(chunkLocation == .inNeighborChunk) {
-				const neighborChunkMesh = mesh_storage.getNeighbor(self.pos, self.pos.voxelSize, neighbor) orelse continue;
+				const neighborChunkMesh = mesh_storage.getNeighbor(self.pos, self.pos.voxelSize(), neighbor) orelse continue;
 
 				neighborChunkMesh.mutex.lock();
 				var neighborBlock = neighborChunkMesh.chunk.data.getValue(neighborPos.toIndex());
@@ -1316,7 +1316,7 @@ pub const ChunkMesh = struct { // MARK: ChunkMesh
 		self.mutex.lock();
 		if(self.lightListNeedsUpload) {
 			self.lightListNeedsUpload = false;
-			lightBuffers[std.math.log2_int(u32, self.pos.voxelSize)].uploadData(self.lightList, &self.lightAllocation);
+			lightBuffers[std.math.log2_int(u32, self.pos.voxelSize())].uploadData(self.lightList, &self.lightAllocation);
 		}
 		self.mutex.unlock();
 
@@ -1335,7 +1335,7 @@ pub const ChunkMesh = struct { // MARK: ChunkMesh
 
 	fn finishNeighbors(self: *ChunkMesh, lightRefreshList: *main.List(chunk.ChunkPosition)) void {
 		for(chunk.Neighbor.iterable) |neighbor| {
-			const nullNeighborMesh = mesh_storage.getNeighbor(self.pos, self.pos.voxelSize, neighbor);
+			const nullNeighborMesh = mesh_storage.getNeighbor(self.pos, self.pos.voxelSize(), neighbor);
 			if(nullNeighborMesh) |neighborMesh| sameLodBlock: {
 				std.debug.assert(neighborMesh != self);
 				deadlockFreeDoubleLock(&self.mutex, &neighborMesh.mutex);
@@ -1420,8 +1420,8 @@ pub const ChunkMesh = struct { // MARK: ChunkMesh
 				}
 			}
 			// lod border:
-			if(self.pos.voxelSize == @as(u31, 1) << settings.highestLod) continue;
-			const neighborMesh = mesh_storage.getNeighbor(self.pos, 2*self.pos.voxelSize, neighbor) orelse {
+			if(self.pos.voxelSize() == @as(u31, 1) << settings.highestLod) continue;
+			const neighborMesh = mesh_storage.getNeighbor(self.pos, 2*self.pos.voxelSize(), neighbor) orelse {
 				self.mutex.lock();
 				defer self.mutex.unlock();
 				if(self.lastNeighborsHigherLod[neighbor.toInt()] != null) {
@@ -1443,9 +1443,9 @@ pub const ChunkMesh = struct { // MARK: ChunkMesh
 			defer opaqueSelf.deinit(main.stackAllocator);
 
 			const x3: i32 = if(neighbor.isPositive()) chunk.chunkMask else 0;
-			const offsetX = @divExact(self.pos.wx, self.pos.voxelSize) & chunk.chunkSize;
-			const offsetY = @divExact(self.pos.wy, self.pos.voxelSize) & chunk.chunkSize;
-			const offsetZ = @divExact(self.pos.wz, self.pos.voxelSize) & chunk.chunkSize;
+			const offsetX = @divExact(self.pos.wx, self.pos.voxelSize()) & chunk.chunkSize;
+			const offsetY = @divExact(self.pos.wy, self.pos.voxelSize()) & chunk.chunkSize;
+			const offsetZ = @divExact(self.pos.wz, self.pos.voxelSize()) & chunk.chunkSize;
 			var x1: i32 = 0;
 			while(x1 < chunk.chunkSize) : (x1 += 1) {
 				var x2: i32 = 0;
@@ -1502,7 +1502,7 @@ pub const ChunkMesh = struct { // MARK: ChunkMesh
 	fn uploadChunkPosition(self: *ChunkMesh) void {
 		chunkBuffer.uploadData(&.{ChunkData{
 			.position = .{self.pos.wx, self.pos.wy, self.pos.wz},
-			.voxelSize = self.pos.voxelSize,
+			.voxelSize = self.pos.voxelSize(),
 			.lightStart = self.lightAllocation.start,
 			.vertexStartOpaque = self.opaqueMesh.bufferAllocation.start*4,
 			.faceCountsByNormalOpaque = self.opaqueMesh.byNormalCount,
@@ -1518,7 +1518,7 @@ pub const ChunkMesh = struct { // MARK: ChunkMesh
 	pub fn prepareRendering(self: *ChunkMesh, chunkLists: *[main.settings.highestSupportedLod + 1]main.List(u32)) void {
 		if(self.opaqueMesh.vertexCount == 0) return;
 
-		chunkLists[std.math.log2_int(u32, self.pos.voxelSize)].append(self.chunkAllocation.start);
+		chunkLists[std.math.log2_int(u32, self.pos.voxelSize())].append(self.chunkAllocation.start);
 
 		quadsDrawn += self.opaqueMesh.vertexCount/6;
 	}
@@ -1563,7 +1563,7 @@ pub const ChunkMesh = struct { // MARK: ChunkMesh
 			@as(f64, @floatFromInt(self.pos.wx)) - playerPosition[0],
 			@as(f64, @floatFromInt(self.pos.wy)) - playerPosition[1],
 			@as(f64, @floatFromInt(self.pos.wz)) - playerPosition[2],
-		}/@as(Vec3d, @splat(@as(f64, @floatFromInt(self.pos.voxelSize))));
+		}/@as(Vec3d, @splat(@as(f64, @floatFromInt(self.pos.voxelSize()))));
 		relativePos = @min(relativePos, @as(Vec3d, @splat(0)));
 		relativePos = @max(relativePos, @as(Vec3d, @splat(-32)));
 		const updatePos: Vec3i = @intFromFloat(relativePos);
@@ -1660,7 +1660,7 @@ pub const ChunkMesh = struct { // MARK: ChunkMesh
 			self.uploadChunkPosition();
 		}
 
-		chunkLists[std.math.log2_int(u32, self.pos.voxelSize)].append(self.chunkAllocation.start);
+		chunkLists[std.math.log2_int(u32, self.pos.voxelSize())].append(self.chunkAllocation.start);
 		transparentQuadsDrawn += self.culledSortingCount;
 	}
 };

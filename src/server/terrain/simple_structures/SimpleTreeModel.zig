@@ -58,9 +58,9 @@ pub fn loadModel(parameters: ZonElement) ?*SimpleTreeModel {
 }
 
 pub fn generateStem(self: *SimpleTreeModel, x: i32, y: i32, z: i32, height: i32, chunk: *main.chunk.ServerChunk, seed: *u64) void {
-	if(chunk.super.pos.voxelSize <= 2) {
+	if(chunk.super.pos.voxelSize() <= 2) {
 		var pz: i32 = chunk.startIndex(z);
-		while(pz < z + height) : (pz += chunk.super.pos.voxelSize) {
+		while(pz < z + height) : (pz += chunk.super.pos.voxelSize()) {
 			if(chunk.liesInChunk(x, y, pz)) {
 				chunk.updateBlockIfDegradable(x, y, pz, if(pz == z + height - 1) self.topWoodBlock else self.woodBlock);
 
@@ -101,13 +101,13 @@ pub fn generate(self: *SimpleTreeModel, _: GenerationMode, x: i32, y: i32, z: i3
 
 	if(z > chunk.super.width) return;
 
-	if(chunk.super.pos.voxelSize >= 16) {
+	if(chunk.super.pos.voxelSize() >= 16) {
 		// Ensures that even at lowest resolution some leaves are rendered for smaller trees.
 		if(chunk.liesInChunk(x, y, z)) {
 			chunk.updateBlockIfDegradable(x, y, z, self.leavesBlock);
 		}
-		if(chunk.liesInChunk(x, y, z + chunk.super.pos.voxelSize)) {
-			chunk.updateBlockIfDegradable(x, y, z + chunk.super.pos.voxelSize, self.leavesBlock);
+		if(chunk.liesInChunk(x, y, z + chunk.super.pos.voxelSize())) {
+			chunk.updateBlockIfDegradable(x, y, z + chunk.super.pos.voxelSize(), self.leavesBlock);
 		}
 	}
 
@@ -117,12 +117,12 @@ pub fn generate(self: *SimpleTreeModel, _: GenerationMode, x: i32, y: i32, z: i3
 			// Position of the first block of leaves
 			height = 3*height >> 1;
 			var pz = chunk.startIndex(z + @divTrunc(height, 3));
-			while(pz < z + height) : (pz += chunk.super.pos.voxelSize) {
+			while(pz < z + height) : (pz += chunk.super.pos.voxelSize()) {
 				const j = @divFloor(height - (pz - z), 2);
 				var px = chunk.startIndex(x + 1 - j);
-				while(px < x + j) : (px += chunk.super.pos.voxelSize) {
+				while(px < x + j) : (px += chunk.super.pos.voxelSize()) {
 					var py = chunk.startIndex(y + 1 - j);
-					while(py < y + j) : (py += chunk.super.pos.voxelSize) {
+					while(py < y + j) : (py += chunk.super.pos.voxelSize()) {
 						if(chunk.liesInChunk(px, py, pz))
 							chunk.updateBlockIfDegradable(px, py, pz, self.leavesBlock);
 					}
@@ -139,11 +139,11 @@ pub fn generate(self: *SimpleTreeModel, _: GenerationMode, x: i32, y: i32, z: i3
 			const invLeafElongationSqr = 1.0/(leafElongation*leafElongation);
 			const center = z + height;
 			var pz = chunk.startIndex(center - ceilZRadius);
-			while(pz < center + ceilZRadius) : (pz += chunk.super.pos.voxelSize) {
+			while(pz < center + ceilZRadius) : (pz += chunk.super.pos.voxelSize()) {
 				var px = chunk.startIndex(x - ceilRadius);
-				while(px < x + ceilRadius) : (px += chunk.super.pos.voxelSize) {
+				while(px < x + ceilRadius) : (px += chunk.super.pos.voxelSize()) {
 					var py = chunk.startIndex(y - ceilRadius);
-					while(py < y + ceilRadius) : (py += chunk.super.pos.voxelSize) {
+					while(py < y + ceilRadius) : (py += chunk.super.pos.voxelSize()) {
 						const distSqr = @as(f32, @floatFromInt((pz - center)*(pz - center)))*invLeafElongationSqr + @as(f32, @floatFromInt((px - x)*(px - x) + (py - y)*(py - y)));
 						if(chunk.liesInChunk(px, py, pz) and distSqr < radiusSqr and (distSqr < randomRadiusSqr or random.nextInt(u1, seed) != 0)) { // TODO: Use another seed to make this more reliable!
 							chunk.updateBlockIfDegradable(px, py, pz, self.leavesBlock);

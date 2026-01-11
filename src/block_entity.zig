@@ -450,7 +450,7 @@ pub const BlockEntityTypes = struct {
 
 		pub fn updateTextFromClient(pos: Vec3i, newText: []const u8) void {
 			{
-				const mesh = main.renderer.mesh_storage.getMesh(.initFromWorldPos(pos, 1)) orelse return;
+				const mesh = main.renderer.mesh_storage.getMesh(.initFromWorldPos(pos, .LOD0)) orelse return;
 				mesh.mutex.lock();
 				defer mesh.mutex.unlock();
 				const localPos = mesh.chunk.getLocalBlockPos(pos);
@@ -528,7 +528,7 @@ pub const BlockEntityTypes = struct {
 				signData.renderedTexture.?.bindTo(0);
 
 				c.glUniform1i(uniforms.quadIndex, @intFromEnum(quad));
-				const mesh = main.renderer.mesh_storage.getMesh(main.chunk.ChunkPosition.initFromWorldPos(signData.blockPos, 1)) orelse continue :outer;
+				const mesh = main.renderer.mesh_storage.getMesh(main.chunk.ChunkPosition.initFromWorldPos(signData.blockPos, .LOD0)) orelse continue :outer;
 				const light: [4]u32 = main.renderer.chunk_meshing.PrimitiveMesh.getLight(mesh, signData.blockPos -% Vec3i{mesh.pos.wx, mesh.pos.wy, mesh.pos.wz}, 0, quad);
 				c.glUniform4ui(uniforms.lightData, light[0], light[1], light[2], light[3]);
 				c.glUniform3i(uniforms.chunkPos, signData.blockPos[0] & ~main.chunk.chunkMask, signData.blockPos[1] & ~main.chunk.chunkMask, signData.blockPos[2] & ~main.chunk.chunkMask);

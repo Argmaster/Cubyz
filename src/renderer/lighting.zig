@@ -129,17 +129,17 @@ pub const ChannelChunk = struct {
 				const neighborPos, const chunkLocation = pos.neighbor(neighbor);
 				var result: Entry = .{.pos = neighborPos, .value = newValue, .sourceDir = neighbor.reverse().toInt(), .activeValue = 0b111};
 				if(!self.isSun or neighbor != .dirDown or result.value[0] != 255 or result.value[1] != 255 or result.value[2] != 255) {
-					result.value[0] -|= 8*|@as(u8, @intCast(self.ch.pos.voxelSize));
-					result.value[1] -|= 8*|@as(u8, @intCast(self.ch.pos.voxelSize));
-					result.value[2] -|= 8*|@as(u8, @intCast(self.ch.pos.voxelSize));
+					result.value[0] -|= 8*|@as(u8, @intCast(self.ch.pos.voxelSize()));
+					result.value[1] -|= 8*|@as(u8, @intCast(self.ch.pos.voxelSize()));
+					result.value[2] -|= 8*|@as(u8, @intCast(self.ch.pos.voxelSize()));
 				}
-				calculateOutgoingOcclusion(&result.value, self.ch.data.getValue(pos.toIndex()), self.ch.pos.voxelSize, neighbor);
+				calculateOutgoingOcclusion(&result.value, self.ch.data.getValue(pos.toIndex()), self.ch.pos.voxelSize(), neighbor);
 				if(result.value[0] == 0 and result.value[1] == 0 and result.value[2] == 0) continue;
 				if(chunkLocation == .inNeighborChunk) {
 					neighborLists[neighbor.toInt()].append(main.stackAllocator, result);
 					continue;
 				}
-				calculateIncomingOcclusion(&result.value, self.ch.data.getValue(neighborPos.toIndex()), self.ch.pos.voxelSize, neighbor.reverse());
+				calculateIncomingOcclusion(&result.value, self.ch.data.getValue(neighborPos.toIndex()), self.ch.pos.voxelSize(), neighbor.reverse());
 				if(result.value[0] != 0 or result.value[1] != 0 or result.value[2] != 0) lightQueue.pushBack(result);
 			}
 		}
@@ -149,7 +149,7 @@ pub const ChannelChunk = struct {
 
 		for(chunk.Neighbor.iterable) |neighbor| {
 			if(neighborLists[neighbor.toInt()].items.len == 0) continue;
-			const neighborMesh = mesh_storage.getNeighbor(self.ch.pos, self.ch.pos.voxelSize, neighbor) orelse continue;
+			const neighborMesh = mesh_storage.getNeighbor(self.ch.pos, self.ch.pos.voxelSize(), neighbor) orelse continue;
 			neighborMesh.lightingData[@intFromBool(self.isSun)].propagateFromNeighbor(lightQueue, neighborLists[neighbor.toInt()].items, lightRefreshList);
 		}
 	}
@@ -219,16 +219,16 @@ pub const ChannelChunk = struct {
 				const neighborPos, const chunkLocation = pos.neighbor(neighbor);
 				var result: Entry = .{.pos = neighborPos, .value = entry.value, .sourceDir = neighbor.reverse().toInt(), .activeValue = @bitCast(activeValue)};
 				if(!self.isSun or neighbor != .dirDown or result.value[0] != 255 or result.value[1] != 255 or result.value[2] != 255) {
-					result.value[0] -|= 8*|@as(u8, @intCast(self.ch.pos.voxelSize));
-					result.value[1] -|= 8*|@as(u8, @intCast(self.ch.pos.voxelSize));
-					result.value[2] -|= 8*|@as(u8, @intCast(self.ch.pos.voxelSize));
+					result.value[0] -|= 8*|@as(u8, @intCast(self.ch.pos.voxelSize()));
+					result.value[1] -|= 8*|@as(u8, @intCast(self.ch.pos.voxelSize()));
+					result.value[2] -|= 8*|@as(u8, @intCast(self.ch.pos.voxelSize()));
 				}
-				calculateOutgoingOcclusion(&result.value, self.ch.data.getValue(pos.toIndex()), self.ch.pos.voxelSize, neighbor);
+				calculateOutgoingOcclusion(&result.value, self.ch.data.getValue(pos.toIndex()), self.ch.pos.voxelSize(), neighbor);
 				if(chunkLocation == .inNeighborChunk) {
 					neighborLists[neighbor.toInt()].append(main.stackAllocator, result);
 					continue;
 				}
-				calculateIncomingOcclusion(&result.value, self.ch.data.getValue(neighborPos.toIndex()), self.ch.pos.voxelSize, neighbor.reverse());
+				calculateIncomingOcclusion(&result.value, self.ch.data.getValue(neighborPos.toIndex()), self.ch.pos.voxelSize(), neighbor.reverse());
 				lightQueue.pushBack(result);
 			}
 		}
@@ -237,7 +237,7 @@ pub const ChannelChunk = struct {
 
 		for(chunk.Neighbor.iterable) |neighbor| {
 			if(neighborLists[neighbor.toInt()].items.len == 0) continue;
-			const neighborMesh = mesh_storage.getNeighbor(self.ch.pos, self.ch.pos.voxelSize, neighbor) orelse continue;
+			const neighborMesh = mesh_storage.getNeighbor(self.ch.pos, self.ch.pos.voxelSize(), neighbor) orelse continue;
 			constructiveEntries.append(main.stackAllocator, .{
 				.mesh = neighborMesh,
 				.entries = neighborMesh.lightingData[@intFromBool(self.isSun)].propagateDestructiveFromNeighbor(lightQueue, neighborLists[neighbor.toInt()].items, constructiveEntries, lightRefreshList),
@@ -251,7 +251,7 @@ pub const ChannelChunk = struct {
 		std.debug.assert(lightQueue.isEmpty());
 		for(lights) |entry| {
 			var result = entry;
-			calculateIncomingOcclusion(&result.value, self.ch.data.getValue(entry.pos.toIndex()), self.ch.pos.voxelSize, @enumFromInt(entry.sourceDir));
+			calculateIncomingOcclusion(&result.value, self.ch.data.getValue(entry.pos.toIndex()), self.ch.pos.voxelSize(), @enumFromInt(entry.sourceDir));
 			if(result.value[0] != 0 or result.value[1] != 0 or result.value[2] != 0) lightQueue.pushBack(result);
 		}
 		self.propagateDirect(lightQueue, lightRefreshList);
@@ -261,7 +261,7 @@ pub const ChannelChunk = struct {
 		std.debug.assert(lightQueue.isEmpty());
 		for(lights) |entry| {
 			var result = entry;
-			calculateIncomingOcclusion(&result.value, self.ch.data.getValue(entry.pos.toIndex()), self.ch.pos.voxelSize, @enumFromInt(entry.sourceDir));
+			calculateIncomingOcclusion(&result.value, self.ch.data.getValue(entry.pos.toIndex()), self.ch.pos.voxelSize(), @enumFromInt(entry.sourceDir));
 			lightQueue.pushBack(result);
 		}
 		return self.propagateDestructive(lightQueue, constructiveEntries, false, lightRefreshList);
@@ -300,19 +300,19 @@ pub const ChannelChunk = struct {
 							y = x1;
 							z = x3;
 						}
-						const neighborMesh = mesh_storage.getNeighbor(self.ch.pos, self.ch.pos.voxelSize, neighbor) orelse continue;
+						const neighborMesh = mesh_storage.getNeighbor(self.ch.pos, self.ch.pos.voxelSize(), neighbor) orelse continue;
 						const neighborLightChunk = neighborMesh.lightingData[@intFromBool(self.isSun)];
 						const pos: BlockPos = .fromCoords(@intCast(x), @intCast(y), @intCast(z));
 						const neighborPos, _ = pos.neighbor(neighbor);
 						var value: [3]u8 = neighborLightChunk.data.getValue(neighborPos.toIndex()).toArray();
 						if(!self.isSun or neighbor != .dirUp or value[0] != 255 or value[1] != 255 or value[2] != 255) {
-							value[0] -|= 8*|@as(u8, @intCast(self.ch.pos.voxelSize));
-							value[1] -|= 8*|@as(u8, @intCast(self.ch.pos.voxelSize));
-							value[2] -|= 8*|@as(u8, @intCast(self.ch.pos.voxelSize));
+							value[0] -|= 8*|@as(u8, @intCast(self.ch.pos.voxelSize()));
+							value[1] -|= 8*|@as(u8, @intCast(self.ch.pos.voxelSize()));
+							value[2] -|= 8*|@as(u8, @intCast(self.ch.pos.voxelSize()));
 						}
-						calculateOutgoingOcclusion(&value, self.ch.data.getValue(neighborPos.toIndex()), self.ch.pos.voxelSize, neighbor);
+						calculateOutgoingOcclusion(&value, self.ch.data.getValue(neighborPos.toIndex()), self.ch.pos.voxelSize(), neighbor);
 						if(value[0] == 0 and value[1] == 0 and value[2] == 0) continue;
-						calculateIncomingOcclusion(&value, self.ch.data.getValue(pos.toIndex()), self.ch.pos.voxelSize, neighbor.reverse());
+						calculateIncomingOcclusion(&value, self.ch.data.getValue(pos.toIndex()), self.ch.pos.voxelSize(), neighbor.reverse());
 						if(value[0] != 0 or value[1] != 0 or value[2] != 0) lightQueue.pushBack(.{.pos = pos, .value = value, .sourceDir = neighbor.toInt(), .activeValue = 0b111});
 					}
 				}
@@ -326,12 +326,12 @@ pub const ChannelChunk = struct {
 		self.mutex.lock();
 		self.data.fillUniform(.fromArray(.{255, 255, 255}));
 		self.mutex.unlock();
-		const val = 255 -| 8*|@as(u8, @intCast(self.ch.pos.voxelSize));
+		const val = 255 -| 8*|@as(u8, @intCast(self.ch.pos.voxelSize()));
 		var lightQueue = main.utils.CircularBufferQueue(Entry).init(main.stackAllocator, 1 << 12);
 		defer lightQueue.deinit();
 		for(chunk.Neighbor.iterable) |neighbor| {
 			if(neighbor == .dirUp) continue;
-			const neighborMesh = mesh_storage.getNeighbor(self.ch.pos, self.ch.pos.voxelSize, neighbor) orelse continue;
+			const neighborMesh = mesh_storage.getNeighbor(self.ch.pos, self.ch.pos.voxelSize(), neighbor) orelse continue;
 			var list: [chunk.chunkSize*chunk.chunkSize]Entry = undefined;
 			for(0..chunk.chunkSize) |x| {
 				for(0..chunk.chunkSize) |y| {

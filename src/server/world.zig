@@ -123,7 +123,7 @@ pub const ChunkManager = struct { // MARK: ChunkManager
 	var mutex: std.Thread.Mutex = .{};
 
 	fn getSimulationChunkAndIncreaseRefCount(pos: chunk.ChunkPosition) ?*SimulationChunk {
-		std.debug.assert(pos.voxelSize == 1);
+		std.debug.assert(pos.voxelSize() == 1);
 		mutex.lock();
 		defer mutex.unlock();
 		if(simulationChunkHashMap.get(pos)) |ch| {
@@ -134,7 +134,7 @@ pub const ChunkManager = struct { // MARK: ChunkManager
 	}
 
 	pub fn getOrGenerateSimulationChunkAndIncreaseRefCount(pos: chunk.ChunkPosition) *SimulationChunk {
-		std.debug.assert(pos.voxelSize == 1);
+		std.debug.assert(pos.voxelSize() == 1);
 		mutex.lock();
 		if(simulationChunkHashMap.get(pos)) |ch| {
 			ch.increaseRefCount();
@@ -202,7 +202,7 @@ pub const ChunkManager = struct { // MARK: ChunkManager
 					const minDistSquare = self.pos.getMinDistanceSquared(user.clientUpdatePos);
 					//                                                                              ↓ Margin for error. (diagonal of 1 chunk)
 					var targetRenderDistance: i64 = @as(i64, user.renderDistance)*chunk.chunkSize + @as(i64, @intFromFloat(@as(comptime_int, chunk.chunkSize)*@sqrt(3.0)));
-					targetRenderDistance *= self.pos.voxelSize;
+					targetRenderDistance *= self.pos.voxelSize();
 					return minDistSquare <= targetRenderDistance*targetRenderDistance;
 				},
 				.simulationChunk => {},
@@ -325,25 +325,25 @@ pub const ChunkManager = struct { // MARK: ChunkManager
 	}
 
 	fn chunkInitFunctionForCacheAndIncreaseRefCount(pos: ChunkPosition) *ServerChunk {
-		if(pos.voxelSize == 1) if(getSimulationChunkAndIncreaseRefCount(pos)) |simulationChunk| { // Check if we already have it in memory.
+		if(pos.voxelSize() == 1) if(getSimulationChunkAndIncreaseRefCount(pos)) |simulationChunk| { // Check if we already have it in memory.
 			defer simulationChunk.decreaseRefCount();
 			if(simulationChunk.getChunk()) |ch| {
 				ch.increaseRefCount();
 				return ch;
 			}
 		};
-		const regionSize = pos.voxelSize*chunk.chunkSize*storage.RegionFile.regionSize;
+		const regionSize = pos.voxelSize()*chunk.chunkSize*storage.RegionFile.regionSize;
 		const regionMask: i32 = regionSize - 1;
-		const region = storage.loadRegionFileAndIncreaseRefCount(pos.wx & ~regionMask, pos.wy & ~regionMask, pos.wz & ~regionMask, pos.voxelSize);
+		const region = storage.loadRegionFileAndIncreaseRefCount(pos.wx & ~regionMask, pos.wy & ~regionMask, pos.wz & ~regionMask, pos.voxelSize());
 		defer region.decreaseRefCount();
 		const ch = ServerChunk.initAndIncreaseRefCount(pos);
 		ch.mutex.lock();
 		defer ch.mutex.unlock();
 		if(region.getChunk(
 			main.stackAllocator,
-			@as(usize, @intCast(pos.wx -% region.pos.wx))/pos.voxelSize/chunk.chunkSize,
-			@as(usize, @intCast(pos.wy -% region.pos.wy))/pos.voxelSize/chunk.chunkSize,
-			@as(usize, @intCast(pos.wz -% region.pos.wz))/pos.voxelSize/chunk.chunkSize,
+			@as(usize, @intCast(pos.wx -% region.pos.wx))/pos.voxelSize()/chunk.chunkSize,
+			@as(usize, @intCast(pos.wy -% region.pos.wy))/pos.voxelSize()/chunk.chunkSize,
+			@as(usize, @intCast(pos.wz -% region.pos.wz))/pos.voxelSize()/chunk.chunkSize,
 		)) |data| blk: { // Load chunk from file:
 			defer main.stackAllocator.free(data);
 			storage.ChunkCompression.loadChunk(&ch.super, .server, data) catch {
@@ -361,7 +361,7 @@ pub const ChunkManager = struct { // MARK: ChunkManager
 		for(server.world.?.chunkManager.terrainGenerationProfile.generators) |generator| {
 			generator.generate(server.world.?.seed ^ generator.generatorSeed, ch, caveMap, biomeMap);
 		}
-		if(pos.voxelSize != 1) { // Generate LOD replacements
+		if(pos.voxelSize() != 1) { // Generate LOD replacements
 			for(ch.super.data.palette()) |*block| {
 				block.store(.{.typ = block.load(.unordered).lodReplacement(), .data = block.load(.unordered).data}, .unordered);
 			}
@@ -374,14 +374,14 @@ pub const ChunkManager = struct { // MARK: ChunkManager
 	}
 	/// Generates a normal chunk at a given location, or if possible gets it from the cache.
 	pub fn getOrGenerateChunkAndIncreaseRefCount(pos: ChunkPosition) *ServerChunk {
-		const mask = pos.voxelSize*chunk.chunkSize - 1;
+		const mask = pos.voxelSize()*chunk.chunkSize - 1;
 		std.debug.assert(pos.wx & mask == 0 and pos.wy & mask == 0 and pos.wz & mask == 0);
 		const result = chunkCache.findOrCreate(pos, chunkInitFunctionForCacheAndIncreaseRefCount, ServerChunk.increaseRefCount);
 		return result;
 	}
 
 	pub fn getChunkFromCacheAndIncreaseRefCount(pos: ChunkPosition) ?*ServerChunk {
-		const mask = pos.voxelSize*chunk.chunkSize - 1;
+		const mask = pos.voxelSize()*chunk.chunkSize - 1;
 		std.debug.assert(pos.wx & mask == 0 and pos.wy & mask == 0 and pos.wz & mask == 0);
 		const result = chunkCache.find(pos, ServerChunk.increaseRefCount) orelse return null;
 		return result;
@@ -626,7 +626,7 @@ pub const ServerWorld = struct { // MARK: ServerWorld
 
 		pub fn run(self: *RegenerateLODTask) void {
 			defer self.clean();
-			const region = storage.loadRegionFileAndIncreaseRefCount(self.pos.wx, self.pos.wy, self.pos.wz, self.pos.voxelSize);
+			const region = storage.loadRegionFileAndIncreaseRefCount(self.pos.wx, self.pos.wy, self.pos.wz, self.pos.voxelSize());
 			defer region.decreaseRefCount();
 			region.mutex.lock();
 			defer region.mutex.unlock();
@@ -640,15 +640,15 @@ pub const ServerWorld = struct { // MARK: ServerWorld
 								.wx = self.pos.wx + @as(i32, @intCast(x))*chunk.chunkSize,
 								.wy = self.pos.wy + @as(i32, @intCast(y))*chunk.chunkSize,
 								.wz = self.pos.wz + @as(i32, @intCast(z))*chunk.chunkSize,
-								.voxelSize = 1,
+								.lod = .LOD0,
 							};
 							const ch = ChunkManager.getOrGenerateChunkAndIncreaseRefCount(pos);
 							defer ch.decreaseRefCount();
 							var nextPos = pos;
-							nextPos.wx &= ~@as(i32, self.pos.voxelSize*chunk.chunkSize);
-							nextPos.wy &= ~@as(i32, self.pos.voxelSize*chunk.chunkSize);
-							nextPos.wz &= ~@as(i32, self.pos.voxelSize*chunk.chunkSize);
-							nextPos.voxelSize *= 2;
+							nextPos.wx &= ~@as(i32, self.pos.voxelSize()*chunk.chunkSize);
+							nextPos.wy &= ~@as(i32, self.pos.voxelSize()*chunk.chunkSize);
+							nextPos.wz &= ~@as(i32, self.pos.voxelSize()*chunk.chunkSize);
+							nextPos.lod = nextPos.lod.next();
 							const nextHigherLod = ChunkManager.getOrGenerateChunkAndIncreaseRefCount(nextPos);
 							defer nextHigherLod.decreaseRefCount();
 							ch.mutex.lock();
@@ -712,7 +712,7 @@ pub const ServerWorld = struct { // MARK: ServerWorld
 						if(entryZ.kind != .file) continue;
 						const nameZ = entryZ.name[0 .. std.mem.indexOfScalar(u8, entryZ.name, '.') orelse entryZ.name.len];
 						const wz = std.fmt.parseInt(i32, nameZ, 0) catch continue;
-						chunkPositions.append(.{.wx = wx, .wy = wy, .wz = wz, .voxelSize = 1});
+						chunkPositions.append(.{.wx = wx, .wy = wy, .wz = wz, .lod = .LOD0});
 					}
 				}
 			}
@@ -1053,7 +1053,7 @@ pub const ServerWorld = struct { // MARK: ServerWorld
 	}
 
 	pub fn getSimulationChunkAndIncreaseRefCount(_: *ServerWorld, x: i32, y: i32, z: i32) ?*SimulationChunk {
-		if(ChunkManager.getSimulationChunkAndIncreaseRefCount(.{.wx = x & ~@as(i32, chunk.chunkMask), .wy = y & ~@as(i32, chunk.chunkMask), .wz = z & ~@as(i32, chunk.chunkMask), .voxelSize = 1})) |entityChunk| {
+		if(ChunkManager.getSimulationChunkAndIncreaseRefCount(.{.wx = x & ~@as(i32, chunk.chunkMask), .wy = y & ~@as(i32, chunk.chunkMask), .wz = z & ~@as(i32, chunk.chunkMask), .lod = .LOD0})) |entityChunk| {
 			return entityChunk;
 		}
 		return null;
@@ -1068,7 +1068,7 @@ pub const ServerWorld = struct { // MARK: ServerWorld
 	}
 
 	pub fn getBiome(_: *const ServerWorld, wx: i32, wy: i32, wz: i32) *const terrain.biomes.Biome {
-		const map = terrain.CaveBiomeMap.InterpolatableCaveBiomeMapView.init(main.stackAllocator, .{.wx = wx, .wy = wy, .wz = wz, .voxelSize = 1}, 1, 0);
+		const map = terrain.CaveBiomeMap.InterpolatableCaveBiomeMapView.init(main.stackAllocator, .{.wx = wx, .wy = wy, .wz = wz, .lod = .LOD0}, 1, 0);
 		defer map.deinit();
 		return map.getRoughBiome(wx, wy, wz, false, undefined, true);
 	}
@@ -1100,7 +1100,7 @@ pub const ServerWorld = struct { // MARK: ServerWorld
 	/// Returns the actual block on failure
 	pub fn cmpxchgBlock(self: *ServerWorld, wx: i32, wy: i32, wz: i32, oldBlock: ?Block, _newBlock: Block) ?Block {
 		main.items.Inventory.threadContext.assertCorrectContext(.server);
-		const baseChunk = ChunkManager.getOrGenerateChunkAndIncreaseRefCount(.{.wx = wx & ~@as(i32, chunk.chunkMask), .wy = wy & ~@as(i32, chunk.chunkMask), .wz = wz & ~@as(i32, chunk.chunkMask), .voxelSize = 1});
+		const baseChunk = ChunkManager.getOrGenerateChunkAndIncreaseRefCount(.{.wx = wx & ~@as(i32, chunk.chunkMask), .wy = wy & ~@as(i32, chunk.chunkMask), .wz = wz & ~@as(i32, chunk.chunkMask), .lod = .LOD0});
 		defer baseChunk.decreaseRefCount();
 		const pos: chunk.BlockPos = .fromWorldCoords(wx, wy, wz);
 		baseChunk.mutex.lock();
@@ -1122,7 +1122,7 @@ pub const ServerWorld = struct { // MARK: ServerWorld
 					.wx = baseChunk.super.pos.wx +% pos.x +% neighbor.relX() & ~@as(i32, chunk.chunkMask),
 					.wy = baseChunk.super.pos.wy +% pos.y +% neighbor.relY() & ~@as(i32, chunk.chunkMask),
 					.wz = baseChunk.super.pos.wz +% pos.z +% neighbor.relZ() & ~@as(i32, chunk.chunkMask),
-					.voxelSize = 1,
+					.lod = .LOD0,
 				});
 			}
 			defer if(ch != baseChunk) {

@@ -40,7 +40,7 @@ pub const RegionFile = struct { // MARK: RegionFile
 			.saveFolder = main.globalAllocator.dupe(u8, saveFolder),
 		};
 
-		const path = std.fmt.allocPrint(main.stackAllocator.allocator, "{s}/{}/{}/{}/{}.region", .{saveFolder, pos.voxelSize, pos.wx, pos.wy, pos.wz}) catch unreachable;
+		const path = std.fmt.allocPrint(main.stackAllocator.allocator, "{s}/{}/{}/{}/{}.region", .{saveFolder, pos.voxelSize(), pos.wx, pos.wy, pos.wz}) catch unreachable;
 		defer main.stackAllocator.free(path);
 		const data = main.files.cubyzDir().read(main.stackAllocator, path) catch {
 			return self;
@@ -143,9 +143,9 @@ pub const RegionFile = struct { // MARK: RegionFile
 		}
 		std.debug.assert(writer.data.items.len == totalSize + headerSize);
 
-		const path = std.fmt.allocPrint(main.stackAllocator.allocator, "{s}/{}/{}/{}/{}.region", .{self.saveFolder, self.pos.voxelSize, self.pos.wx, self.pos.wy, self.pos.wz}) catch unreachable;
+		const path = std.fmt.allocPrint(main.stackAllocator.allocator, "{s}/{}/{}/{}/{}.region", .{self.saveFolder, self.pos.voxelSize(), self.pos.wx, self.pos.wy, self.pos.wz}) catch unreachable;
 		defer main.stackAllocator.free(path);
-		const folder = std.fmt.allocPrint(main.stackAllocator.allocator, "{s}/{}/{}/{}", .{self.saveFolder, self.pos.voxelSize, self.pos.wx, self.pos.wy}) catch unreachable;
+		const folder = std.fmt.allocPrint(main.stackAllocator.allocator, "{s}/{}/{}/{}", .{self.saveFolder, self.pos.voxelSize(), self.pos.wx, self.pos.wy}) catch unreachable;
 		defer main.stackAllocator.free(folder);
 
 		main.files.cubyzDir().makePath(folder) catch |err| {
@@ -245,7 +245,7 @@ pub fn loadRegionFileAndIncreaseRefCount(wx: i32, wy: i32, wz: i32, voxelSize: u
 		.wx = wx & ~@as(i32, RegionFile.regionSize*voxelSize - 1),
 		.wy = wy & ~@as(i32, RegionFile.regionSize*voxelSize - 1),
 		.wz = wz & ~@as(i32, RegionFile.regionSize*voxelSize - 1),
-		.voxelSize = voxelSize,
+		.lod = @enumFromInt(std.math.log2_int(u31, voxelSize)),
 	};
 	const result = cache.findOrCreate(compare, cacheInit, RegionFile.increaseRefCount);
 	return result;

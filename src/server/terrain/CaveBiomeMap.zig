@@ -35,7 +35,7 @@ pub const CaveBiomeMapFragment = struct { // MARK: caveBiomeMapFragment
 				.wx = wx,
 				.wy = wy,
 				.wz = wz,
-				.voxelSize = caveBiomeSize,
+				.lod = @enumFromInt(std.math.log2_int(u31, caveBiomeSize)),
 			},
 		};
 	}
@@ -156,10 +156,10 @@ pub const InterpolatableCaveBiomeMapView = struct { // MARK: InterpolatableCaveB
 		var result = InterpolatableCaveBiomeMapView{
 			.fragments = Array3D(*CaveBiomeMapFragment).init(allocator, caveBiomeFragmentWidth, caveBiomeFragmentWidth, caveBiomeFragmentWidth),
 			.surfaceFragments = [_]*MapFragment{
-				SurfaceMap.getOrGenerateFragment(center[0] -% SurfaceMap.MapFragment.mapSize/2*pos.voxelSize, center[1] -% SurfaceMap.MapFragment.mapSize/2*pos.voxelSize, pos.voxelSize),
-				SurfaceMap.getOrGenerateFragment(center[0] -% SurfaceMap.MapFragment.mapSize/2*pos.voxelSize, center[1] +% SurfaceMap.MapFragment.mapSize/2*pos.voxelSize, pos.voxelSize),
-				SurfaceMap.getOrGenerateFragment(center[0] +% SurfaceMap.MapFragment.mapSize/2*pos.voxelSize, center[1] -% SurfaceMap.MapFragment.mapSize/2*pos.voxelSize, pos.voxelSize),
-				SurfaceMap.getOrGenerateFragment(center[0] +% SurfaceMap.MapFragment.mapSize/2*pos.voxelSize, center[1] +% SurfaceMap.MapFragment.mapSize/2*pos.voxelSize, pos.voxelSize),
+				SurfaceMap.getOrGenerateFragment(center[0] -% SurfaceMap.MapFragment.mapSize/2*pos.voxelSize(), center[1] -% SurfaceMap.MapFragment.mapSize/2*pos.voxelSize(), pos.voxelSize()),
+				SurfaceMap.getOrGenerateFragment(center[0] -% SurfaceMap.MapFragment.mapSize/2*pos.voxelSize(), center[1] +% SurfaceMap.MapFragment.mapSize/2*pos.voxelSize(), pos.voxelSize()),
+				SurfaceMap.getOrGenerateFragment(center[0] +% SurfaceMap.MapFragment.mapSize/2*pos.voxelSize(), center[1] -% SurfaceMap.MapFragment.mapSize/2*pos.voxelSize(), pos.voxelSize()),
+				SurfaceMap.getOrGenerateFragment(center[0] +% SurfaceMap.MapFragment.mapSize/2*pos.voxelSize(), center[1] +% SurfaceMap.MapFragment.mapSize/2*pos.voxelSize(), pos.voxelSize()),
 			},
 			.pos = pos,
 			.width = width,
@@ -296,41 +296,41 @@ pub const InterpolatableCaveBiomeMapView = struct { // MARK: InterpolatableCaveB
 	/// On failure returnHeight contains the lower border of the terrain height.
 	fn checkSurfaceBiomeWithHeight(self: InterpolatableCaveBiomeMapView, wx: i32, wy: i32, wz: i32, returnHeight: *i32) ?*const Biome {
 		var index: u8 = 0;
-		if(wx -% self.surfaceFragments[0].pos.wx >= MapFragment.mapSize*self.pos.voxelSize) {
+		if(wx -% self.surfaceFragments[0].pos.wx >= MapFragment.mapSize*self.pos.voxelSize()) {
 			index += 2;
 		}
-		if(wy -% self.surfaceFragments[0].pos.wy >= MapFragment.mapSize*self.pos.voxelSize) {
+		if(wy -% self.surfaceFragments[0].pos.wy >= MapFragment.mapSize*self.pos.voxelSize()) {
 			index += 1;
 		}
 		const height: i32 = self.surfaceFragments[index].getHeight(wx, wy);
-		if(wz < height - 32*self.pos.voxelSize or wz >= height + 128 + self.pos.voxelSize) {
-			const len = height - 32*self.pos.voxelSize -% wz;
+		if(wz < height - 32*self.pos.voxelSize() or wz >= height + 128 + self.pos.voxelSize()) {
+			const len = height - 32*self.pos.voxelSize() -% wz;
 			if(len > 0) returnHeight.* = @min(returnHeight.*, len);
 			return null;
 		}
-		returnHeight.* = height + 128 + self.pos.voxelSize - wz;
+		returnHeight.* = height + 128 + self.pos.voxelSize() - wz;
 		return self.surfaceFragments[index].getBiome(wx, wy);
 	}
 
 	fn checkSurfaceBiome(self: InterpolatableCaveBiomeMapView, wx: i32, wy: i32, wz: i32) ?*const Biome {
 		var index: u8 = 0;
-		if(wx -% self.surfaceFragments[0].pos.wx >= MapFragment.mapSize*self.pos.voxelSize) {
+		if(wx -% self.surfaceFragments[0].pos.wx >= MapFragment.mapSize*self.pos.voxelSize()) {
 			index += 2;
 		}
-		if(wy -% self.surfaceFragments[0].pos.wy >= MapFragment.mapSize*self.pos.voxelSize) {
+		if(wy -% self.surfaceFragments[0].pos.wy >= MapFragment.mapSize*self.pos.voxelSize()) {
 			index += 1;
 		}
 		const height: i32 = self.surfaceFragments[index].getHeight(wx, wy);
-		if(wz < height - 32*self.pos.voxelSize or wz > height + 128 + self.pos.voxelSize) return null;
+		if(wz < height - 32*self.pos.voxelSize() or wz > height + 128 + self.pos.voxelSize()) return null;
 		return self.surfaceFragments[index].getBiome(wx, wy);
 	}
 
 	pub fn getSurfaceHeight(self: InterpolatableCaveBiomeMapView, wx: i32, wy: i32) i32 {
 		var index: u8 = 0;
-		if(wx -% self.surfaceFragments[0].pos.wx >= MapFragment.mapSize*self.pos.voxelSize) {
+		if(wx -% self.surfaceFragments[0].pos.wx >= MapFragment.mapSize*self.pos.voxelSize()) {
 			index += 2;
 		}
-		if(wy -% self.surfaceFragments[0].pos.wy >= MapFragment.mapSize*self.pos.voxelSize) {
+		if(wy -% self.surfaceFragments[0].pos.wy >= MapFragment.mapSize*self.pos.voxelSize()) {
 			index += 1;
 		}
 		return self.surfaceFragments[index].getHeight(wx, wy);
@@ -425,7 +425,7 @@ pub const InterpolatableCaveBiomeMapView = struct { // MARK: InterpolatableCaveB
 			}
 		}
 		var map: u1 = undefined;
-		const gridPoint = getGridPointAndHeight(.{wx, wy, wz}, &map, returnHeight, self.pos.voxelSize);
+		const gridPoint = getGridPointAndHeight(.{wx, wy, wz}, &map, returnHeight, self.pos.voxelSize());
 
 		if(getSeed) {
 			// A good old "I don't know what I'm doing" hash (TODO: Use some standard hash maybe):
@@ -446,10 +446,10 @@ pub const CaveBiomeMapView = struct { // MARK: CaveBiomeMapView
 		var self = CaveBiomeMapView{
 			.super = InterpolatableCaveBiomeMapView.init(allocator, pos, width, margin),
 		};
-		if(pos.voxelSize < 8) {
+		if(pos.voxelSize() < 8) {
 			const startX = (pos.wx -% margin) & ~@as(i32, 63);
 			const startY = (pos.wy -% margin) & ~@as(i32, 63);
-			self.noise = CachedFractalNoise.init(startX, startY, pos.voxelSize, width + 64 + 2*margin, main.server.world.?.seed ^ 0x764923684396, 64);
+			self.noise = CachedFractalNoise.init(startX, startY, pos.voxelSize(), width + 64 + 2*margin, main.server.world.?.seed ^ 0x764923684396, 64);
 		}
 		return self;
 	}
@@ -557,7 +557,7 @@ fn getOrGenerateFragment(_wx: i32, _wy: i32, _wz: i32) *CaveBiomeMapFragment {
 		.wx = wx,
 		.wy = wy,
 		.wz = wz,
-		.voxelSize = CaveBiomeMapFragment.caveBiomeSize,
+		.lod = @enumFromInt(std.math.log2_int(u31, CaveBiomeMapFragment.caveBiomeSize)),
 	};
 	const result = cache.findOrCreate(compare, cacheInit, null);
 	return result;
