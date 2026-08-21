@@ -10,7 +10,7 @@ on:
 
 jobs:
   compile:
-    runs-on: ubuntu-latest
+    runs-on: [ubuntu-latest, windows-latest]
     name: Compilation Check
     steps:
       - uses: actions/checkout@v3
@@ -19,21 +19,27 @@ jobs:
         with:
           version: ${{ env.VERSION }}
       - run: sudo apt install glslang-tools
-      - run: wget -O ./Cubyz-fmt https://github.com/PixelGuys/Cubyz-formatter/releases/download/0.16.0+0/Cubyz-fmt-x86_64-linux
-      - run: chmod +x ./Cubyz-fmt
-      - run: |
+      - if: runner.os == 'Linux'
+        run: |
+          wget -O ./Cubyz-fmt https://github.com/PixelGuys/Cubyz-formatter/releases/download/0.16.0+0/Cubyz-fmt-x86_64-linux
+          chmod +x ./Cubyz-fmt
+      - if: runner.os == 'Linux'
+        run: |
           shopt -s nullglob
           for file in *.zon assets/*.zon assets/*/*.zon assets/*/*/*.zon assets/*/*/*/*.zon assets/*/*/*/*/*.zon assets/*/*/*/*/*/*.zon assets/*/*/*/*/*/*/*.zon assets/*/*/*/*/*/*/*/*.zon assets/*/*/*/*/*/*/*/*/*.zon assets/*/*/*/*/*/*/*/*/*/*.zon ; do
             zig ast-check $file
           done
-      - run: |
+      - if: runner.os == 'Linux'
+        run: |
           if ./Cubyz-fmt assets/ mods/ src/ *.zig *.zon | grep -q . ; then
             git diff --color=always;
             exit 1;
           fi
-      - run: wget -O ./Cubyz-linter https://github.com/PixelGuys/Cubyz-linter/releases/download/0.16.0+4/Cubyz-linter-x86_64-linux
-      - run: chmod +x ./Cubyz-linter
-      - run: ./Cubyz-linter assets/ mods/ src/ *.zon
+      - if: runner.os == 'Linux'
+        run: |
+          wget -O ./Cubyz-linter https://github.com/PixelGuys/Cubyz-linter/releases/download/0.16.0+4/Cubyz-linter-x86_64-linux
+          chmod +x ./Cubyz-linter
+          ./Cubyz-linter assets/ mods/ src/ *.zon
       - run: zig build
       - run: zig build -Dtarget=x86_64-windows-gnu
       - run: zig build -Dtarget=aarch64-linux-gnu
