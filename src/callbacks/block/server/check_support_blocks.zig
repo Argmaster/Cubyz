@@ -10,6 +10,7 @@ const Vec3d = vec.Vec3d;
 const Vec3f = vec.Vec3f;
 const ZonElement = main.ZonElement;
 const server = main.server;
+const mods = @import("mods");
 
 pub fn init(_: ZonElement, _: main.callbacks.Creator) ?*@This() {
 	return @as(*@This(), undefined);
@@ -30,12 +31,13 @@ pub fn run(_: *@This(), params: main.callbacks.ServerBlockCallback.Params) main.
 
 	var newBlock: Block = params.block;
 
-	inline for (comptime std.meta.declarations(main.rotation.rotations)) |rotationMode| {
-		if (params.block.mode() == main.rotation.getByID(rotationMode.name)) {
-			if (@hasDecl(@field(main.rotation.rotations, rotationMode.name), "updateBlockFromNeighborConnectivity")) {
-				@field(main.rotation.rotations, rotationMode.name).updateBlockFromNeighborConnectivity(&newBlock, neighborSupportive);
+	inline for (mods.cubyz.rotations.iterator) |item| {
+		const id, const rotationMode = item;
+		if (params.block.mode() == main.rotation.getByID(id)) {
+			if (@hasDecl(rotationMode, "updateBlockFromNeighborConnectivity")) {
+				rotationMode.updateBlockFromNeighborConnectivity(&newBlock, neighborSupportive);
 			} else {
-				std.log.err("Rotation mode {s} has no updateBlockFromNeighborConnectivity function and cannot be used for {s} callback", .{rotationMode.name, @typeName(@This())});
+				std.log.err("Rotation mode {s} has no updateBlockFromNeighborConnectivity function and cannot be used for {s} callback", .{id, @typeName(@This())});
 			}
 		}
 	}

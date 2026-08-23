@@ -9,8 +9,9 @@ const Vec3d = vec.Vec3d;
 const Vec3f = vec.Vec3f;
 const ZonElement = main.ZonElement;
 const server = main.server;
-const branch = main.rotation.rotations.@"cubyz:branch";
 const BlockDrop = main.server.BlockDrop;
+const mods = @import("mods");
+const branch = mods.cubyz.rotations.branch;
 
 decayReplacement: blocks.Block,
 prevention: []const main.Tag,

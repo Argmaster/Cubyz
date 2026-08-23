@@ -13,7 +13,7 @@ const Vec3f = vec.Vec3f;
 const Mat4f = vec.Mat4f;
 const ZonElement = main.ZonElement;
 
-pub const rotations = @import("rotations");
+pub const mods = @import("mods");
 
 pub const RayIntersectionResult = struct {
 	distance: f32,
@@ -224,21 +224,24 @@ fn rayTriangleIntersection(origin: Vec3f, direction: Vec3f, triangle: [3]Vec3f) 
 
 pub fn init() void {
 	rotationModes = .init(main.globalAllocator.allocator);
-	inline for (@typeInfo(rotations).@"struct".decls) |declaration| {
-		register(declaration.name, @field(rotations, declaration.name));
+	inline for (mods.cubyz.rotations.iterator) |item| {
+		const id, const mode = item;
+		register(id, mode);
 	}
 }
 
 pub fn reset() void {
-	inline for (@typeInfo(rotations).@"struct".decls) |declaration| {
-		@field(rotations, declaration.name).reset();
+	inline for (mods.cubyz.rotations.iterator) |item| {
+		_, const mode = item;
+		mode.reset();
 	}
 }
 
 pub fn deinit() void {
 	rotationModes.deinit();
-	inline for (@typeInfo(rotations).@"struct".decls) |declaration| {
-		@field(rotations, declaration.name).deinit();
+	inline for (mods.cubyz.rotations.iterator) |item| {
+		_, const mode = item;
+		mode.deinit();
 	}
 }
 

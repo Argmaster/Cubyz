@@ -10,6 +10,8 @@ const Block = main.blocks.Block;
 const Blueprint = main.blueprint.Blueprint;
 const Pattern = main.blueprint.Pattern;
 
+const mods = @import("mods");
+
 pub const description = "Enable/disable decay on decayable blocks.";
 pub const usage =
 	\\/toggledecay <selection/clipboard> <on/off>
@@ -79,7 +81,7 @@ pub fn execute(args: Args, source: Source) void {
 
 pub fn toggledecay(decayState: State, current: Block) Block {
 	if (current.mode() == main.rotation.getByID("cubyz:branch")) {
-		var branchData = main.rotation.rotations.@"cubyz:branch".BranchData.init(current.data);
+		var branchData = mods.cubyz.rotations.branch.BranchData.init(current.data);
 		branchData.placedByHuman = decayState == .off;
 		return .{.typ = current.typ, .data = @as(u7, @bitCast(branchData))};
 	}

@@ -87,101 +87,100 @@ fn linkLibraries(b: *std.Build, exe: *std.Build.Step.Compile, useLocalDeps: bool
 	}
 }
 
-pub fn makeModFeature(io: std.Io, step: *std.Build.Step, name: []const u8) !void {
-	var featureList: std.ArrayListUnmanaged(u8) = .empty;
-	defer featureList.deinit(step.owner.allocator);
+const ModFeatures = struct {
+	fn addStep(b: *std.Build, exe: *std.Build.Step.Compile) !void {
+		const step = try b.allocator.create(std.Build.Step);
+		step.* = std.Build.Step.init(.{
+			.id = .custom,
+			.name = "Create Mods",
+			.owner = b,
+			.makeFn = generateModFeatureFiles,
+		});
+		exe.step.dependOn(step);
 
-	var modDir = try std.Io.Dir.cwd().openDir(io, "mods", .{.iterate = true});
-	defer modDir.close(io);
+		const module = b.createModule(.{
+			.root_source_file = b.path(b.fmt("mods/_mods.zig", .{})),
+			.target = exe.root_module.resolved_target,
+			.optimize = exe.root_module.optimize,
+		});
+		module.addImport("main", exe.root_module);
+		exe.root_module.addImport("mods", module);
+	}
+	/// Recursively iterate through all directories in the `mods` directory.
+	/// For each create a file with same name as the directory which contains imports for all files in that directory.
+	/// Each imported file is assigned to a public constant with same name as the file.
+	pub fn generateModFeatureFiles(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
+		var io = std.Io.Threaded.init(options.gpa, .{});
+		defer io.deinit();
 
-	var iterator = modDir.iterate();
-	while (try iterator.next(io)) |modEntry| {
-		if (modEntry.kind != .directory) continue;
+		var modDir = try std.Io.Dir.cwd().openDir(io.io(), "mods", .{.iterate = true});
+		defer modDir.close(io.io());
 
-		var mod = try modDir.openDir(io, modEntry.name, .{});
-		defer mod.close(io);
+		try recurseAndGenerateFiles(step, io.io(), "mods", modDir);
+	}
 
-		var featureDir = mod.openDir(io, name, .{.iterate = true}) catch continue;
-		defer featureDir.close(io);
-
-		var featureWalker = try std.Io.Dir.walk(featureDir, step.owner.allocator);
-		defer featureWalker.deinit();
-
-		var modFeatureList: std.ArrayListUnmanaged([]const u8) = .empty;
-		defer modFeatureList.deinit(step.owner.allocator);
-
-		while (try featureWalker.next(io)) |featureEntry| {
-			if (featureEntry.kind != .file) continue;
-			if (!std.mem.endsWith(u8, featureEntry.basename, ".zig")) continue;
-
-			const normalizedPath = step.owner.dupe(featureEntry.path);
-			defer step.owner.allocator.free(normalizedPath);
-			if (std.Io.Dir.path.sep != '/') std.mem.replaceScalar(u8, normalizedPath, std.Io.Dir.path.sep, '/');
-
-			try modFeatureList.append(step.owner.allocator, step.owner.fmt(
-				\\pub const @"{s}:{s}" = @import("{s}/{s}/{s}");
-			,
-				.{
-					modEntry.name,
-					normalizedPath[0 .. normalizedPath.len - 4],
-					modEntry.name,
-					name,
-					normalizedPath,
-				},
-			));
+	fn recurseAndGenerateFiles(step: *std.Build.Step, io: std.Io, name: []const u8, dir: std.Io.Dir) !void {
+		var fileContent: std.ArrayListUnmanaged([]const u8) = .empty;
+		defer {
+			for (fileContent.items) |item| step.owner.allocator.free(item);
+			fileContent.deinit(step.owner.allocator);
 		}
-		std.mem.sort([]const u8, modFeatureList.items, {}, struct {
+
+		var symbols: std.ArrayListUnmanaged([]const u8) = .empty;
+		defer symbols.deinit(step.owner.allocator);
+
+		var iterator = dir.iterate();
+
+		while (try iterator.next(io)) |entry| {
+			if (std.mem.startsWith(u8, entry.name, "_")) continue;
+
+			switch (entry.kind) {
+				.file => {
+					if (!std.mem.endsWith(u8, entry.name, ".zig")) continue;
+
+					try fileContent.append(step.owner.allocator, step.owner.fmt(
+						\\pub const {s} = @import("{s}");
+						\\
+					, .{entry.name[0 .. entry.name.len - 4], entry.name}));
+				},
+				.directory => {
+					var subDir = try dir.openDir(io, entry.name, .{.iterate = true});
+					defer subDir.close(io);
+
+					try recurseAndGenerateFiles(step, io, entry.name, subDir);
+
+					try fileContent.append(step.owner.allocator, step.owner.fmt(
+						\\pub const {s} = @import("{s}/_{s}.zig");
+						\\
+					, .{entry.name, entry.name, entry.name}));
+				},
+				else => {},
+			}
+		}
+
+		std.mem.sort([]const u8, fileContent.items, {}, struct {
 			fn lessThanFn(_: void, lhs: []const u8, rhs: []const u8) bool {
 				return std.mem.lessThan(u8, lhs, rhs);
 			}
 		}.lessThanFn);
 
-		if (featureList.items.len != 0) try featureList.append(step.owner.allocator, '\n');
-		try featureList.appendSlice(step.owner.allocator, step.owner.fmt(
-			\\// MARK: {s}
-			\\
-		, .{modEntry.name}));
-
-		for (modFeatureList.items, 0..) |item, i| {
-			if (i != 0) try featureList.append(step.owner.allocator, '\n');
-			try featureList.appendSlice(step.owner.allocator, item);
-		}
-		try featureList.append(step.owner.allocator, '\n');
+		try writeFile(step, io, name, dir, &fileContent);
 	}
 
-	const file_path = step.owner.fmt("mods/{s}.zig", .{name});
-	try std.Io.Dir.cwd().writeFile(io, .{.data = featureList.items, .sub_path = file_path});
-}
+	fn writeFile(step: *std.Build.Step, io: std.Io, name: []const u8, dir: std.Io.Dir, fileContent: *std.ArrayListUnmanaged([]const u8)) !void {
+		const file_path = step.owner.fmt("_{s}.zig", .{name});
+		defer step.owner.allocator.free(file_path);
 
-pub fn addModFeatureModule(b: *std.Build, exe: *std.Build.Step.Compile, name: []const u8) !void {
-	const module = b.createModule(.{
-		.root_source_file = b.path(b.fmt("mods/{s}.zig", .{name})),
-		.target = exe.root_module.resolved_target,
-		.optimize = exe.root_module.optimize,
-	});
-	module.addImport("main", exe.root_module);
-	exe.root_module.addImport(name, module);
-}
+		const file = try dir.createFile(io, file_path, .{});
+		defer file.close(io);
 
-fn addModFeatures(b: *std.Build, exe: *std.Build.Step.Compile) !void {
-	const step = try b.allocator.create(std.Build.Step);
-	step.* = std.Build.Step.init(.{
-		.id = .custom,
-		.name = "Create Mods",
-		.owner = b,
-		.makeFn = makeModFeaturesStep,
-	});
-	exe.step.dependOn(step);
+		var buffer: [4096]u8 = undefined;
+		var writer = file.writer(io, &buffer);
 
-	try addModFeatureModule(b, exe, "rotations");
-}
-
-pub fn makeModFeaturesStep(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
-	var io = std.Io.Threaded.init(options.gpa, .{});
-	defer io.deinit();
-
-	try makeModFeature(io.io(), step, "rotations");
-}
+		try writer.interface.writeVecAll(fileContent.items);
+		try writer.flush();
+	}
+};
 
 fn createLaunchConfig(b: *std.Build) !void {
 	var io = std.Io.Threaded.init(b.allocator, .{});
@@ -262,7 +261,7 @@ pub fn build(b: *std.Build) !void {
 	});
 	exe.root_module.addOptions("build_options", options);
 	exe.root_module.addImport("main", mainModule);
-	try addModFeatures(b, exe);
+	try ModFeatures.addStep(b, exe);
 
 	if (isRelease and target.result.os.tag == .windows) {
 		exe.subsystem = .windows;
@@ -324,7 +323,7 @@ pub fn build(b: *std.Build) !void {
 	linkLibraries(b, exe_tests, useLocalDeps);
 	exe_tests.root_module.addOptions("build_options", options);
 	exe_tests.root_module.addImport("main", mainModule);
-	try addModFeatures(b, exe_tests);
+	try ModFeatures.addStep(b, exe_tests);
 	const run_exe_tests = b.addRunArtifact(exe_tests);
 
 	const test_step = b.step("test", "Run unit tests");
