@@ -224,25 +224,30 @@ fn rayTriangleIntersection(origin: Vec3f, direction: Vec3f, triangle: [3]Vec3f) 
 
 pub fn init() void {
 	rotationModes = .init(main.globalAllocator.allocator);
-	inline for (mods.cubyz.rotations.iterator) |item| {
-		const id, const mode = item;
-		register(id, mode);
-	}
+	main.mods.walkFeature(&.{"rotations"}, void, {}, struct {
+		fn run(_: void, comptime feature: main.mods.ObjectDescriptor) void {
+			std.mem.concat(main.stackAllocator, u8, feature.path);
+			register(id, mode);
+		}
+	}.run);
+	inline for (mods.cubyz.rotations.iterator) |item| {}
 }
 
 pub fn reset() void {
-	inline for (mods.cubyz.rotations.iterator) |item| {
-		_, const mode = item;
-		mode.reset();
-	}
+	main.mods.walkFeature(&.{"rotations"}, void, {}, struct {
+		fn run(_: void, comptime feature: main.mods.ObjectDescriptor) void {
+			feature.object.reset();
+		}
+	}.run);
 }
 
 pub fn deinit() void {
 	rotationModes.deinit();
-	inline for (mods.cubyz.rotations.iterator) |item| {
-		_, const mode = item;
-		mode.deinit();
-	}
+	main.mods.walkFeature(&.{"rotations"}, void, {}, struct {
+		fn run(_: void, comptime feature: main.mods.ObjectDescriptor) void {
+			feature.object.deinit();
+		}
+	}.run);
 }
 
 pub fn getByID(id: []const u8) *const RotationMode {
