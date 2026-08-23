@@ -142,6 +142,8 @@ pub const RotationMode = struct { // MARK: RotationMode
 		yes_costsItems: u16,
 	};
 
+	id: []const u8 = "cubyz:no_rotation",
+
 	/// if the block should be destroyed or changed when a certain neighbor is removed.
 	dependsOnNeighbors: bool = false,
 
@@ -224,18 +226,16 @@ fn rayTriangleIntersection(origin: Vec3f, direction: Vec3f, triangle: [3]Vec3f) 
 
 pub fn init() void {
 	rotationModes = .init(main.globalAllocator.allocator);
-	main.mods.walkFeature(&.{"rotations"}, void, {}, struct {
-		fn run(_: void, comptime feature: main.mods.ObjectDescriptor) void {
-			std.mem.concat(main.stackAllocator, u8, feature.path);
-			register(id, mode);
+	main.mods.walkFeatureContext(.rotations, void, undefined, struct {
+		fn run(_: void, feature: main.mods.ObjectDescriptor) void {
+			register(feature.id, feature.object);
 		}
 	}.run);
-	inline for (mods.cubyz.rotations.iterator) |item| {}
 }
 
 pub fn reset() void {
-	main.mods.walkFeature(&.{"rotations"}, void, {}, struct {
-		fn run(_: void, comptime feature: main.mods.ObjectDescriptor) void {
+	main.mods.walkFeatureContext(.rotations, void, undefined, struct {
+		fn run(_: void, feature: main.mods.ObjectDescriptor) void {
 			feature.object.reset();
 		}
 	}.run);
@@ -243,8 +243,8 @@ pub fn reset() void {
 
 pub fn deinit() void {
 	rotationModes.deinit();
-	main.mods.walkFeature(&.{"rotations"}, void, {}, struct {
-		fn run(_: void, comptime feature: main.mods.ObjectDescriptor) void {
+	main.mods.walkFeatureContext(.rotations, void, undefined, struct {
+		fn run(_: void, feature: main.mods.ObjectDescriptor) void {
 			feature.object.deinit();
 		}
 	}.run);
@@ -258,7 +258,7 @@ pub fn getByID(id: []const u8) *const RotationMode {
 
 pub fn register(comptime id: []const u8, comptime Mode: type) void {
 	Mode.init();
-	var result: RotationMode = RotationMode{};
+	var result: RotationMode = RotationMode{.id = id};
 	inline for (@typeInfo(RotationMode).@"struct".fields) |field| {
 		if (@hasDecl(Mode, field.name)) {
 			if (field.type == @TypeOf(@field(Mode, field.name))) {
