@@ -5,7 +5,7 @@
 		.{.items = .{.auto}},
 	},
 	.onInteract = .{
-		.type = .open_window,
+		.type = "cubyz:open_window",
 		.name = "workbench",
 	},
 	.model = "cubyz:cube",

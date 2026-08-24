@@ -1,7 +1,7 @@
 .{
 	.tags = .{.choppable, .wood, .branch},
 	.onUpdate = .{
-		.type = .decay,
+		.type = "cubyz:decay",
 	},
 	.blockHealth = 4,
 	.texture0 = "cubyz:branch/cirrus/dot",

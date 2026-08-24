@@ -13,6 +13,6 @@
 	.model = "cubyz:cross",
 	.lodReplacement = "cubyz:air",
 	.onUpdate = .{
-		.type = .check_support_blocks,
+		.type = "cubyz:check_support_blocks",
 	},
 }

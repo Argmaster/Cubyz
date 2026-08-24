@@ -1,7 +1,7 @@
 .{
 	.tags = .{.choppable, .cuttable, .sliceable, .leaf, .branch},
 	.onUpdate = .{
-		.type = .decay,
+		.type = "cubyz:decay",
 	},
 	.blockHealth = 0.5,
 	.absorbedLight = 0x202830,

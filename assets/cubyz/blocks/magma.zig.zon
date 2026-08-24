@@ -9,7 +9,7 @@
 	.rotation = "cubyz:stairs",
 	.texture = "cubyz:magma",
 	.onTouch = .{
-		.type = .hurt,
+		.type = "cubyz:hurt",
 		.dps = 0.5,
 		.damageType = .heat,
 	},

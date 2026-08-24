@@ -30,17 +30,12 @@ pub fn run(_: *@This(), params: main.callbacks.ServerBlockCallback.Params) main.
 	}
 
 	var newBlock: Block = params.block;
-
-	inline for (mods.cubyz.rotations.iterator) |item| {
-		const id, const rotationMode = item;
-		if (params.block.mode() == main.rotation.getByID(id)) {
-			if (@hasDecl(rotationMode, "updateBlockFromNeighborConnectivity")) {
-				rotationMode.updateBlockFromNeighborConnectivity(&newBlock, neighborSupportive);
-			} else {
-				std.log.err("Rotation mode {s} has no updateBlockFromNeighborConnectivity function and cannot be used for {s} callback", .{id, @typeName(@This())});
-			}
-		}
-	}
+	main.mods.walkFeatureContext(
+		.rotations,
+		Context,
+		.{.id = params.block.mode().id, .newBlock = &newBlock, .neighborSupportive = neighborSupportive},
+		updateBlockFromNeighborConnectivity,
+	);
 
 	if (newBlock == params.block) return .ignored;
 
@@ -69,4 +64,16 @@ pub fn run(_: *@This(), params: main.callbacks.ServerBlockCallback.Params) main.
 		return .handled;
 	}
 	return .ignored;
+}
+
+const Context = struct { id: []const u8, newBlock: *Block, neighborSupportive: [6]bool };
+
+fn updateBlockFromNeighborConnectivity(context: Context, descriptor: main.mods.ObjectDescriptor) void {
+	if (std.mem.eql(u8, descriptor.id, context.id)) {
+		if (@hasDecl(descriptor.object, "updateBlockFromNeighborConnectivity")) {
+			descriptor.object.updateBlockFromNeighborConnectivity(context.newBlock, context.neighborSupportive);
+			return;
+		}
+		std.log.err("Rotation mode {s} has no updateBlockFromNeighborConnectivity function and cannot be used for {s} callback", .{context.id, @typeName(@This())});
+	}
 }
