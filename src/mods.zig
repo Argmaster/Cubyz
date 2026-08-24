@@ -6,6 +6,7 @@ const features = @import("features.zig");
 pub const Feature = features.Feature;
 
 const featureTables: [@typeInfo(Feature).@"enum".fields.len]std.StaticStringMap(ObjectDescriptor) = getFeatureTables: {
+	@setEvalBranchQuota(1_000_000);
 	const featureCount = @typeInfo(Feature).@"enum".fields.len;
 
 	const countFeatures = struct {

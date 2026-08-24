@@ -15,15 +15,15 @@
 			.textureRoughness = 0.2,
 			.modifiers = .{
 				.{
-					.id = "durable",
+					.id = "cubyz:durable",
 					.strength = 0.1,
 				},
 				.{
-					.id = "good_at",
+					.id = "cubyz:good_at",
 					.strength = 0.5,
 					.tag = .voidstone,
 					.restriction = .{
-						.id = .encased,
+						.id = "cubyz:encased",
 						.tag = .precious,
 						.amount = 2,
 					},

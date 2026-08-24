@@ -196,7 +196,7 @@ const ModFeatures = struct {
 
 						try self.fileSymbols.append(self.allocator, try self.allocator.dupe(u8, nameWithoutExtension));
 						try self.importLines.append(self.allocator, try std.fmt.allocPrint(self.allocator,
-							\\pub const {s} = @import("{s}");
+							\\pub const @"{s}" = @import("{s}");
 							\\
 						, .{nameWithoutExtension, entry.name}));
 					},
@@ -214,7 +214,7 @@ const ModFeatures = struct {
 
 						try self.directorySymbols.append(self.allocator, try self.allocator.dupe(u8, entry.name));
 						try self.importLines.append(self.allocator, try std.fmt.allocPrint(self.allocator,
-							\\pub const {s} = @import("{s}/_{s}.zig");
+							\\pub const @"{s}" = @import("{s}/_{s}.zig");
 							\\
 						, .{entry.name, entry.name, entry.name}));
 					},
@@ -280,7 +280,7 @@ const ModFeatures = struct {
 			for (symbols) |symbolName| {
 				const mod = getModName(path, symbolName);
 				const id = try makeFeatureId(self.allocator, mod, strippedPath, symbolName);
-				const nextLine = try std.fmt.allocPrint(self.allocator, "\t\t.{{ .mod = \"{s}\", .id = \"{s}\", .object = {s} }},\n", .{mod, id, symbolName});
+				const nextLine = try std.fmt.allocPrint(self.allocator, "\t\t.{{ .mod = \"{s}\", .id = \"{s}\", .object = @\"{s}\" }},\n", .{mod, id, symbolName});
 				try self.fileContent.appendSlice(self.allocator, nextLine);
 			}
 			try self.fileContent.appendSlice(self.allocator, "\t};\n");

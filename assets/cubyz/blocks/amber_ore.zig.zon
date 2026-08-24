@@ -13,10 +13,10 @@
 			.textureRoughness = 0.1,
 			.modifiers = .{
 				.{
-					.id = "light",
+					.id = "cubyz:light",
 					.strength = 0.5,
 					.restriction = .{
-						.id = .encased,
+						.id = "cubyz:encased",
 						.tag = .precious,
 						.amount = 4,
 					},

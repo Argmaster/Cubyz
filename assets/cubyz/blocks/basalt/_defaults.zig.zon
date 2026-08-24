@@ -15,11 +15,11 @@
 			.textureRoughness = 5.0,
 			.modifiers = .{
 				.{
-					.id = "good_at",
+					.id = "cubyz:good_at",
 					.strength = 0.5,
 					.tag = .basalt,
 					.restriction = .{
-						.id = .encased,
+						.id = "cubyz:encased",
 						.tag = .precious,
 						.amount = 2,
 					},

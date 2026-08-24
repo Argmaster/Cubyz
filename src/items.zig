@@ -20,9 +20,6 @@ const Vec2i = vec.Vec2i;
 const Vec3i = vec.Vec3i;
 const Vec3f = vec.Vec3f;
 
-const modifierList = @import("proceduralItem/modifiers/_list.zig");
-const modifierRestrictionList = @import("proceduralItem/modifiers/restrictions/_list.zig");
-
 pub const recipes = @import("items/recipes.zig");
 
 pub const Inventory = @import("Inventory.zig");
@@ -124,7 +121,7 @@ const Material = struct { // MARK: Material
 			outString.appendSlice("§#808080Material\n");
 		}
 		for (self.modifiers) |modifier| {
-			if (modifier.restriction.vTable == modifierRestrictions.get("always").?) {
+			if (modifier.restriction.vTable == modifierRestrictions.get("cubyz:always").?) {
 				modifier.printTooltip(outString);
 				outString.appendSlice("\n");
 			} else {
@@ -153,10 +150,10 @@ pub const ModifierRestriction = struct {
 	}
 
 	pub fn loadFromZon(allocator: NeverFailingAllocator, zon: ZonElement) ModifierRestriction {
-		const id = zon.get([]const u8, "id") orelse "always";
+		const id = zon.get([]const u8, "id") orelse "cubyz:always";
 		const vTable = modifierRestrictions.get(id) orelse blk: {
-			std.log.err("Couldn't find modifier restriction with id '{s}'. Replacing it with 'always'", .{id});
-			break :blk modifierRestrictions.get("always").?;
+			std.log.err("Couldn't find modifier restriction with id '{s}'. Replacing it with 'cubyz:always'", .{id});
+			break :blk modifierRestrictions.get("cubyz:always").?;
 		};
 		return .{
 			.vTable = vTable,
@@ -1395,21 +1392,24 @@ pub fn getRecipes() []Recipe {
 
 pub fn globalInit() void {
 	proceduralItemTypeIdToIndex = .{};
-
 	itemListSize = 0;
-	inline for (@typeInfo(modifierList).@"struct".decls) |decl| {
-		const ModifierStruct: type = @field(modifierList, decl.name);
-		modifiers.put(main.globalArena.allocator, decl.name, &Modifier.VTable.initFromModifierStruct(ModifierStruct)) catch unreachable;
-	}
-	inline for (@typeInfo(modifierRestrictionList).@"struct".decls) |decl| {
-		const ModifierRestrictionStruct = @field(modifierRestrictionList, decl.name);
-		modifierRestrictions.put(main.globalArena.allocator, decl.name, &.{
-			.satisfied = comptime main.meta.castFunctionSelfToAnyopaque(ModifierRestrictionStruct.satisfied),
-			.loadFromZon = comptime main.meta.castFunctionReturnToAnyopaque(ModifierRestrictionStruct.loadFromZon),
-			.printTooltip = comptime main.meta.castFunctionSelfToAnyopaque(ModifierRestrictionStruct.printTooltip),
-		}) catch unreachable;
-	}
+
+	main.mods.walkFeatureContext(.@"procedural_item/modifiers", void , undefined, registerModifier);
+	main.mods.walkFeatureContext(.@"procedural_item/modifiers/restrictions", void , undefined, registerModifierRestriction);
+
 	Inventory.client.init();
+}
+
+fn registerModifier(_: void, descriptor: main.mods.ObjectDescriptor) void {
+	modifiers.put(main.globalArena.allocator, descriptor.id, &Modifier.VTable.initFromModifierStruct(descriptor.object)) catch unreachable;
+}
+
+fn registerModifierRestriction(_: void, descriptor: main.mods.ObjectDescriptor) void {
+	modifierRestrictions.put(main.globalArena.allocator, descriptor.id, &.{
+		.satisfied = comptime main.meta.castFunctionSelfToAnyopaque(descriptor.object.satisfied),
+		.loadFromZon = comptime main.meta.castFunctionReturnToAnyopaque(descriptor.object.loadFromZon),
+		.printTooltip = comptime main.meta.castFunctionSelfToAnyopaque(descriptor.object.printTooltip),
+	}) catch unreachable;
 }
 
 pub fn globalDeinit() void {

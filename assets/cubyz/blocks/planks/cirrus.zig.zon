@@ -9,7 +9,7 @@
 			.textureRoughness = 0.7,
 			.modifiers = .{
 				.{
-					.id = "light",
+					.id = "cubyz:light",
 					.strength = 0.1,
 				},
 			},
