@@ -1394,8 +1394,8 @@ pub fn globalInit() void {
 	proceduralItemTypeIdToIndex = .{};
 	itemListSize = 0;
 
-	main.mods.walkFeatureContext(.@"procedural_item/modifiers", void , undefined, registerModifier);
-	main.mods.walkFeatureContext(.@"procedural_item/modifiers/restrictions", void , undefined, registerModifierRestriction);
+	main.mods.walkFeatureContext(.@"procedural_item/modifiers", void, undefined, registerModifier);
+	main.mods.walkFeatureContext(.@"procedural_item/modifiers/restrictions", void, undefined, registerModifierRestriction);
 
 	Inventory.client.init();
 }
