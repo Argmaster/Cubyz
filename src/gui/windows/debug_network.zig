@@ -43,12 +43,9 @@ pub fn render() void {
 		y += 8;
 		draw.print("External header overhead: {}kiB", .{network.Connection.externalHeaderOverhead.load(.monotonic) >> 10}, 0, y, 8);
 		y += 8;
-		inline for (@typeInfo(network.protocols).@"struct".decls) |decl| {
-			if (@TypeOf(@field(network.protocols, decl.name)) == type) {
-				const id = @field(network.protocols, decl.name).id;
-				draw.print("{s}: received {}kiB sent {}kiB", .{decl.name, network.protocols.bytesReceived[id].load(.monotonic) >> 10, network.protocols.bytesSent[id].load(.monotonic) >> 10}, 0, y, 8);
-				y += 8;
-			}
+		inline for (@typeInfo(network.protocols.Protocols).@"enum".fields) |field| {
+			draw.print("{s}: received {}kiB sent {}kiB", .{field.name, network.protocols.bytesReceived[field.value].load(.monotonic) >> 10, network.protocols.bytesSent[field.value].load(.monotonic) >> 10}, 0, y, 8);
+			y += 8;
 		}
 	}
 	if (window.contentSize[1] != y) {

@@ -4,6 +4,8 @@ const main = @import("main");
 const command = main.server.command;
 const Source = command.Source;
 
+const mods = @import("mods");
+
 pub const description = "Teleport to location.";
 pub const usage =
 	\\/tp <biome>
@@ -68,7 +70,7 @@ pub fn execute(args: Args, source: Source) void {
 					if (sample.biome == biome) {
 						const z = sample.height + sample.hills + sample.mountains + sample.roughness;
 						const biomeSize = main.server.terrain.SurfaceMap.MapFragment.biomeSize;
-						main.network.protocols.genericUpdate.sendTPCoordinates(user.conn, .{@floatFromInt(wx + x*biomeSize + biomeSize/2), @floatFromInt(wy + y*biomeSize + biomeSize/2), @floatCast(z + biomeSize/2)});
+						mods.cubyz.network.protocols.teleport.send(user.conn, .{@floatFromInt(wx + x*biomeSize + biomeSize/2), @floatFromInt(wy + y*biomeSize + biomeSize/2), @floatCast(z + biomeSize/2)});
 						return;
 					}
 				}
@@ -104,5 +106,5 @@ pub fn execute(args: Args, source: Source) void {
 			break :blk dest.user.player().pos;
 		},
 	};
-	main.network.protocols.genericUpdate.sendTPCoordinates(target.user.conn, pos);
+	mods.cubyz.network.protocols.teleport.send(target.user.conn, pos);
 }

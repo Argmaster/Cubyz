@@ -6,6 +6,8 @@ const Vec3d = vec.Vec3d;
 const Vec3f = vec.Vec3f;
 const Vec4f = vec.Vec4f;
 
+const mods = @import("mods");
+
 pub const components = @import("entityComponent/_list.zig");
 
 pub const EntityNetworkData = struct {
@@ -170,12 +172,12 @@ pub const server = struct {
 		if (EntityComponent.server.get(entity)) |ptr| {
 			if (ptr.save(&binaryWriter, .playerNearby) == .save) {
 				for (users) |user| {
-					main.network.protocols.EntityComponentUpdate.load(user.conn, entity, EntityComponent.entityComponentID, EntityComponent.entityComponentVersion, binaryWriter.data.items);
+					mods.cubyz.network.protocols.entity_component_update.load(user.conn, entity, EntityComponent.entityComponentID, EntityComponent.entityComponentVersion, binaryWriter.data.items);
 				}
 			}
 		} else {
 			for (users) |user| {
-				main.network.protocols.EntityComponentUpdate.unload(user.conn, entity, EntityComponent.entityComponentID);
+				mods.cubyz.network.protocols.entity_component_update.unload(user.conn, entity, EntityComponent.entityComponentID);
 			}
 		}
 	}

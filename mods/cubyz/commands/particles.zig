@@ -6,6 +6,8 @@ const Source = command.Source;
 const particles = main.particles;
 const User = main.server.User;
 
+const mods = @import("mods");
+
 pub const description = "Spawns particles.";
 pub const usage =
 	\\/particles <id> <x> <y> <z>
@@ -41,7 +43,7 @@ pub fn execute(args: Args, source: Source) void {
 	const users = main.server.getUserList(main.stackAllocator);
 	defer main.stackAllocator.free(users);
 	for (users) |user| {
-		main.network.protocols.genericUpdate.sendParticles(
+		mods.cubyz.network.protocols.particles.send(
 			user.conn,
 			args.@"/particles <id> <x> <y> <z> <collides> <count> <spawnDataZon>".id,
 			command.resolveCoordinates(

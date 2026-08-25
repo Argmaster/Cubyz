@@ -12,6 +12,8 @@ const TextInput = GuiComponent.TextInput;
 const VerticalList = @import("../components/VerticalList.zig");
 const FixedSizeCircularBuffer = main.utils.FixedSizeCircularBuffer;
 
+const mods = @import("mods");
+
 pub var window: GuiWindow = GuiWindow{
 	.relativePosition = .{
 		.{.attachedToFrame = .{.selfAttachmentPoint = .lower, .otherAttachmentPoint = .lower}},
@@ -265,7 +267,7 @@ pub fn sendMessage() void {
 			if (input.currentString.items[0] == '/') {
 				main.sync.client.executeCommand(.{.chatCommand = .{.message = main.globalAllocator.dupe(u8, input.currentString.items[1..])}});
 			} else {
-				main.network.protocols.chat.send(main.game.world.?.conn, data);
+				mods.cubyz.network.protocols.chat.send(main.game.world.?.conn, data);
 			}
 			input.clear();
 		}

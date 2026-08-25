@@ -6,6 +6,8 @@ const vec = main.vec;
 const Vec3i = vec.Vec3i;
 const ZonElement = main.ZonElement;
 
+const mods = @import("mods");
+
 pub fn init(_: ZonElement, _: main.callbacks.Creator) ?*anyopaque {
 	return @as(*anyopaque, undefined);
 }
@@ -15,7 +17,7 @@ pub fn run(_: *anyopaque, params: main.callbacks.ClientBlockCallback.Params) mai
 		std.log.err("Can only open chest if block entity of the block is a chest.", .{});
 		return .ignored;
 	}
-	main.network.protocols.blockEntityUpdate.sendClientDataUpdateToServer(main.game.world.?.conn, params.blockPos);
+	mods.cubyz.network.protocols.block_entity_update.sendClientDataUpdateToServer(main.game.world.?.conn, params.blockPos);
 
 	const inventory = main.items.Inventory.ClientInventory.init(main.globalAllocator, main.block_entity.BlockEntityTypes.@"cubyz:chest".inventorySize, .serverShared, .{.blockInventory = params.blockPos}, .{});
 

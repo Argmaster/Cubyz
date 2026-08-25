@@ -3,6 +3,8 @@ const std = @import("std");
 const main = @import("main");
 const Source = main.server.command.Source;
 
+const mods = @import("mods");
+
 pub const description = "Clears your inventory/chat";
 pub const usage = "/clear <inventory/chat>";
 
@@ -18,6 +20,6 @@ pub fn execute(args: Args, source: Source) void {
 	const user = source.user;
 	switch (args.@"/clear <target>".target) {
 		.inventory => main.items.Inventory.server.clearPlayerInventory(user),
-		.chat => main.network.protocols.genericUpdate.sendClear(user.conn, .chat),
+		.chat => mods.cubyz.network.protocols.clear.send(user.conn, .chat),
 	}
 }

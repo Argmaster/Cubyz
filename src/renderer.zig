@@ -24,6 +24,7 @@ const Vec3d = vec.Vec3d;
 const Vec4f = vec.Vec4f;
 const Mat4f = vec.Mat4f;
 
+const mods = @import("mods");
 const c = @import("c");
 
 pub const chunk_meshing = @import("renderer/chunk_meshing.zig");
@@ -1043,7 +1044,7 @@ pub const MeshSelection = struct { // MARK: MeshSelection
 					}
 					if (std.mem.eql(u8, baseItem.id(), "cubyz:selection_wand")) {
 						game.Player.selectionPosition2 = selectedPos;
-						main.network.protocols.genericUpdate.sendWorldEditPos(main.game.world.?.conn, .selectedPos2, selectedPos);
+						mods.cubyz.network.protocols.world_edit_pos.send(main.game.world.?.conn, .selectedPos2, selectedPos);
 						return;
 					}
 				},
@@ -1061,7 +1062,7 @@ pub const MeshSelection = struct { // MARK: MeshSelection
 			const isSelectionWand = stack.item == .baseItem and std.mem.eql(u8, stack.item.baseItem.id(), "cubyz:selection_wand");
 			if (isSelectionWand) {
 				game.Player.selectionPosition1 = selectedPos;
-				main.network.protocols.genericUpdate.sendWorldEditPos(main.game.world.?.conn, .selectedPos1, selectedPos);
+				mods.cubyz.network.protocols.world_edit_pos.send(main.game.world.?.conn, .selectedPos1, selectedPos);
 				return;
 			}
 

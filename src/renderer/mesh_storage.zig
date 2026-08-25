@@ -21,6 +21,8 @@ const EventStatus = main.block_entity.EventStatus;
 const chunk_meshing = @import("chunk_meshing.zig");
 const ChunkMesh = chunk_meshing.ChunkMesh;
 
+const mods = @import("mods");
+
 const ChunkMeshNode = struct {
 	mesh: Atomic(?*chunk_meshing.ChunkMesh) = .init(null),
 	active: bool = false,
@@ -569,8 +571,8 @@ pub noinline fn updateAndGetRenderChunks(conn: *network.Connection, frustum: *co
 	createNewMeshes(olderPx, olderPy, olderPz, olderRD, &meshRequests, &mapRequests);
 
 	// Make requests as soon as possible to reduce latency:
-	network.protocols.lightMapRequest.sendRequest(conn, mapRequests.items);
-	network.protocols.chunkRequest.sendRequest(conn, meshRequests.items, .{lastPx, lastPy, lastPz}, lastRD);
+	mods.cubyz.network.protocols.light_map_request.send(conn, mapRequests.items);
+	mods.cubyz.network.protocols.chunk_request.send(conn, meshRequests.items, .{lastPx, lastPy, lastPz}, lastRD);
 
 	// Finds all visible chunks and lod chunks using a breadth-first hierarchical search.
 

@@ -127,6 +127,14 @@ pub inline fn walkFeatureContext(
 	}
 }
 
+pub fn getFeatures(feature: Feature) []const ObjectDescriptor {
+	return featureTables[@intFromEnum(feature)].values();
+}
+
+pub fn getFeatureCount(feature: Feature) usize {
+	return featureTables[@intFromEnum(feature)].kvs.len;
+}
+
 pub fn getFeature(feature: Feature, id: []const u8) ObjectDescriptor {
 	return featureTables[@intFromEnum(feature)].get(id);
 }
