@@ -13,7 +13,7 @@ const Vec3f = vec.Vec3f;
 const Mat4f = vec.Mat4f;
 const ZonElement = main.ZonElement;
 
-pub const rotations = @import("rotations");
+pub const mods = @import("mods");
 
 pub const RayIntersectionResult = struct {
 	distance: f32,
@@ -142,6 +142,8 @@ pub const RotationMode = struct { // MARK: RotationMode
 		yes_costsItems: u16,
 	};
 
+	id: []const u8 = "cubyz:no_rotation",
+
 	/// if the block should be destroyed or changed when a certain neighbor is removed.
 	dependsOnNeighbors: bool = false,
 
@@ -224,22 +226,28 @@ fn rayTriangleIntersection(origin: Vec3f, direction: Vec3f, triangle: [3]Vec3f) 
 
 pub fn init() void {
 	rotationModes = .init(main.globalAllocator.allocator);
-	inline for (@typeInfo(rotations).@"struct".decls) |declaration| {
-		register(declaration.name, @field(rotations, declaration.name));
-	}
+	main.mods.walkFeatureContext(.rotations, void, undefined, struct {
+		fn run(_: void, feature: main.mods.ObjectDescriptor) void {
+			register(feature.id, feature.object);
+		}
+	}.run);
 }
 
 pub fn reset() void {
-	inline for (@typeInfo(rotations).@"struct".decls) |declaration| {
-		@field(rotations, declaration.name).reset();
-	}
+	main.mods.walkFeatureContext(.rotations, void, undefined, struct {
+		fn run(_: void, feature: main.mods.ObjectDescriptor) void {
+			feature.object.reset();
+		}
+	}.run);
 }
 
 pub fn deinit() void {
 	rotationModes.deinit();
-	inline for (@typeInfo(rotations).@"struct".decls) |declaration| {
-		@field(rotations, declaration.name).deinit();
-	}
+	main.mods.walkFeatureContext(.rotations, void, undefined, struct {
+		fn run(_: void, feature: main.mods.ObjectDescriptor) void {
+			feature.object.deinit();
+		}
+	}.run);
 }
 
 pub fn getByID(id: []const u8) *const RotationMode {
@@ -250,7 +258,7 @@ pub fn getByID(id: []const u8) *const RotationMode {
 
 pub fn register(comptime id: []const u8, comptime Mode: type) void {
 	Mode.init();
-	var result: RotationMode = RotationMode{};
+	var result: RotationMode = RotationMode{.id = id};
 	inline for (@typeInfo(RotationMode).@"struct".fields) |field| {
 		if (@hasDecl(Mode, field.name)) {
 			if (field.type == @TypeOf(@field(Mode, field.name))) {

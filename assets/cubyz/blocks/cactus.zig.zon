@@ -10,7 +10,7 @@
 	.texture_top = "cubyz:cactus_top",
 	.texture_bottom = "cubyz:cactus_top",
 	.onTouch = .{
-		.type = .hurt,
+		.type = "cubyz:hurt",
 		.dps = 0.5,
 		.damageType = .spiky,
 	},

@@ -31,6 +31,8 @@ const Gamemode = main.game.Gamemode;
 const BlockUpdateSystem = main.server.BlockUpdateSystem;
 const SimulationChunk = main.server.SimulationChunk;
 
+const mods = @import("mods");
+
 pub const Settings = struct {
 	defaultGamemode: Gamemode = .creative,
 	allowCheats: bool = true,
@@ -300,12 +302,12 @@ pub const ChunkManager = struct { // MARK: ChunkManager
 			const map = terrain.LightMap.getOrGenerateFragment(self.pos.wx, self.pos.wy, self.pos.voxelSize);
 			if (self.source) |source| {
 				const user = server.getUserByIndex(source) orelse return;
-				if (user.connected.load(.monotonic)) main.network.protocols.lightMapTransmission.sendLightMap(user.conn, map);
+				if (user.connected.load(.monotonic)) mods.cubyz.network.protocols.light_map_transmission.send(user.conn, map);
 			} else {
 				const userList = server.getUserList(main.stackAllocator);
 				defer main.stackAllocator.free(userList);
 				for (userList) |user| {
-					main.network.protocols.lightMapTransmission.sendLightMap(user.conn, map);
+					mods.cubyz.network.protocols.light_map_transmission.send(user.conn, map);
 				}
 			}
 		}
@@ -352,7 +354,7 @@ pub const ChunkManager = struct { // MARK: ChunkManager
 		switch (source) {
 			.player => |player| {
 				const user = server.getUserByIndex(player) orelse return;
-				main.network.protocols.chunkTransmission.sendChunk(user.conn, ch);
+				mods.cubyz.network.protocols.chunk_transmission.send(user.conn, ch);
 				ch.decreaseRefCount();
 			},
 			.simulationChunk => |simulationChunk| {
@@ -1116,7 +1118,7 @@ pub const ServerWorld = struct { // MARK: ServerWorld
 			const userList = server.getUserList(main.stackAllocator);
 			defer main.stackAllocator.free(userList);
 			for (userList) |user| {
-				main.network.protocols.genericUpdate.sendTime(user.conn, self);
+				mods.cubyz.network.protocols.time.send(user.conn, self);
 			}
 		}
 		self.tick();
@@ -1256,7 +1258,7 @@ pub const ServerWorld = struct { // MARK: ServerWorld
 				defer main.stackAllocator.free(userList);
 
 				for (userList) |user| {
-					main.network.protocols.blockUpdate.send(user.conn, &.{.{.pos = .{wx +% neighbor.relX(), wy +% neighbor.relY(), wz +% neighbor.relZ()}, .newBlock = neighborBlock, .blockEntityData = &.{}}});
+					mods.cubyz.network.protocols.block_update.send(user.conn, &.{.{.pos = .{wx +% neighbor.relX(), wy +% neighbor.relY(), wz +% neighbor.relZ()}, .newBlock = neighborBlock, .blockEntityData = &.{}}});
 				}
 			}
 			if (newBlock.mode().dependsOnNeighbors) {
@@ -1279,7 +1281,7 @@ pub const ServerWorld = struct { // MARK: ServerWorld
 		defer main.stackAllocator.free(userList);
 
 		for (userList) |user| {
-			main.network.protocols.blockUpdate.send(user.conn, &.{.{.pos = .{wx, wy, wz}, .newBlock = newBlock, .blockEntityData = &.{}}});
+			mods.cubyz.network.protocols.block_update.send(user.conn, &.{.{.pos = .{wx, wy, wz}, .newBlock = newBlock, .blockEntityData = &.{}}});
 		}
 		// onBreak event
 		if (oldBlock) |block| {

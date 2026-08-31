@@ -17,6 +17,7 @@ const Vec3d = vec.Vec3d;
 const Vec3f = vec.Vec3f;
 const Vec3i = vec.Vec3i;
 
+const mods = @import("mods");
 const c = @import("c");
 
 const UpdateEvent = union(enum) {
@@ -474,7 +475,7 @@ pub const BlockEntityTypes = struct { // MARK: BlockEntityTypes
 				};
 			}
 
-			main.network.protocols.blockEntityUpdate.sendClientDataUpdateToServer(main.game.world.?.conn, pos);
+			mods.cubyz.network.protocols.block_entity_update.sendClientDataUpdateToServer(main.game.world.?.conn, pos);
 		}
 
 		pub fn renderAll(ambientLight: Vec3f) void {

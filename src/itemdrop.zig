@@ -24,6 +24,7 @@ const BinaryReader = main.utils.BinaryReader;
 const BinaryWriter = main.utils.BinaryWriter;
 const NeverFailingAllocator = main.heap.NeverFailingAllocator;
 
+const mods = @import("mods");
 const c = @import("c");
 
 const ItemDrop = struct { // MARK: ItemDrop
@@ -259,7 +260,7 @@ pub const ItemDropManager = struct { // MARK: ItemDropManager
 			const userList = main.server.getUserList(main.stackAllocator);
 			defer main.stackAllocator.free(userList);
 			for (userList) |user| {
-				main.network.protocols.entity.send(user.conn, updateData);
+				mods.cubyz.network.protocols.entity.send(user.conn, updateData);
 			}
 		}
 
@@ -291,7 +292,7 @@ pub const ItemDropManager = struct { // MARK: ItemDropManager
 			const userList = main.server.getUserList(main.stackAllocator);
 			defer main.stackAllocator.free(userList);
 			for (userList) |user| {
-				main.network.protocols.entity.send(user.conn, updateData);
+				mods.cubyz.network.protocols.entity.send(user.conn, updateData);
 			}
 		}
 
@@ -347,7 +348,7 @@ pub const ItemDropManager = struct { // MARK: ItemDropManager
 		const userList = main.server.getUserList(main.stackAllocator);
 		defer main.stackAllocator.free(userList);
 		for (userList) |user| {
-			main.network.protocols.entity.send(user.conn, updateData);
+			mods.cubyz.network.protocols.entity.send(user.conn, updateData);
 		}
 
 		self.emptyMutex.unlock();

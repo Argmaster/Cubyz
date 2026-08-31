@@ -9,6 +9,8 @@ const settings = main.settings;
 const utils = main.utils;
 const NeverFailingAllocator = main.heap.NeverFailingAllocator;
 
+const mods = @import("mods");
+
 pub const authentication = @import("network/authentication.zig");
 pub const protocols = @import("network/protocols.zig");
 
@@ -1587,7 +1589,7 @@ pub const Connection = struct { // MARK: Connection
 		if (self.connectionState.load(.monotonic) == .paused) {
 			self.connectionState.store(.connected, .monotonic);
 		}
-		main.network.protocols.reload.informClientOfRestart(self);
+		mods.cubyz.network.protocols.reload.informClientOfRestart(self);
 		self.handShakeState.store(.signatureResponse, .monotonic);
 		if (self.user) |user| {
 			user.@"continue"();
@@ -1597,7 +1599,7 @@ pub const Connection = struct { // MARK: Connection
 		// Reload protocol bypasses everything else
 		std.debug.assert(channelId == .lossy or channelId == .secure or channelId == .slow);
 
-		if (protocolIndex != protocols.reload.id) {
+		if (protocolIndex != @intFromEnum(@as(protocols.Protocols, .@"cubyz:reload"))) {
 			// Throw away everything from before the restart
 			if (conn.restartChannelCounter[@intFromEnum(channelId)] != conn.restartCounter) return .discard;
 			return .evaluate;
@@ -1625,10 +1627,14 @@ pub const Connection = struct { // MARK: Connection
 		return .discard;
 	}
 
-	pub fn send(self: *Connection, comptime channel: ChannelId, protocolIndex: u8, data: []const u8) void {
-		std.debug.assert(self.handShakeState.raw == .complete or protocolIndex == protocols.handShake.id or protocolIndex == protocols.reload.id);
-		std.debug.assert(self.handShakeState.raw != .complete or protocolIndex != protocols.handShake.id);
+	pub fn send(self: *Connection, comptime channel: ChannelId, protocol: protocols.Protocols, data: []const u8) void {
+		const protocolIndex = @intFromEnum(protocol);
+
+		std.debug.assert(self.handShakeState.raw == .complete or protocol == .@"cubyz:hand_shake" or protocol == .@"cubyz:reload");
+		std.debug.assert(self.handShakeState.raw != .complete or protocol != .@"cubyz:hand_shake");
+
 		_ = protocols.bytesSent[protocolIndex].fetchAdd(data.len, .monotonic);
+
 		self.mutex.lock();
 		defer self.mutex.unlock();
 

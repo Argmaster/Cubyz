@@ -27,6 +27,8 @@ const Block = main.blocks.Block;
 const physics = main.physics;
 const KeyBoard = main.KeyBoard;
 
+const mods = @import("mods");
+
 pub const camera = struct { // MARK: camera
 	pub var rotation: Vec3f = Vec3f{0, 0, 0};
 	pub var direction: Vec3f = Vec3f{0, 0, 0};
@@ -187,12 +189,12 @@ pub const Player = struct { // MARK: Player
 		}
 	}
 
-	pub fn placeBlock(mods: main.Window.Key.Modifiers) void {
+	pub fn placeBlock(modifiers: main.Window.Key.Modifiers) void {
 		if (main.renderer.MeshSelection.selectedBlockPos) |blockPos| blk: {
 			const mesh = main.renderer.mesh_storage.getMesh(.initFromWorldPos(blockPos, 1)) orelse break :blk;
 			const block = mesh.chunk.getBlock(blockPos[0] - mesh.pos.wx, blockPos[1] - mesh.pos.wy, blockPos[2] - mesh.pos.wz);
 			const onInteract = block.onInteract();
-			if (!mods.shift) {
+			if (!modifiers.shift) {
 				if (onInteract.run(.{.blockPos = blockPos, .block = block, .chunk = mesh.chunk}) == .handled) return;
 			}
 		}
@@ -211,8 +213,8 @@ pub const Player = struct { // MARK: Player
 		Player.jumpCoyote = 0;
 	}
 
-	pub fn dropFromHand(mods: main.Window.Key.Modifiers) void {
-		if (mods.shift) {
+	pub fn dropFromHand(modifiers: main.Window.Key.Modifiers) void {
+		if (modifiers.shift) {
 			inventory.dropStack(selectedSlot);
 		} else {
 			inventory.dropOne(selectedSlot);
@@ -303,7 +305,7 @@ pub const World = struct { // MARK: World
 		self.itemDrops.init(main.globalAllocator);
 		errdefer self.itemDrops.deinit();
 
-		return try network.protocols.handShake.clientSide(self.conn, settings.playerName);
+		return try mods.cubyz.network.protocols.hand_shake.clientSide(self.conn, settings.playerName);
 	}
 
 	pub fn init(self: *World, ip: []const u8, manager: *ConnectionManager) !ZonElement {
@@ -397,7 +399,7 @@ pub const World = struct { // MARK: World
 		main.entityModel.loadModelsAndTexture();
 
 		try Player.loadFrom(zon.getChild("player"));
-		main.network.protocols.handShake.signalLoadedAssets();
+		mods.cubyz.network.protocols.hand_shake.signalLoadedAssets();
 
 		self.paused = false;
 	}
@@ -411,7 +413,7 @@ pub const World = struct { // MARK: World
 				curTime = actualTime;
 			}
 		}
-		network.protocols.playerPosition.send(self.conn, Player.getPosBlocking(), Player.getVelBlocking(), @intCast(newTime & 65535));
+		mods.cubyz.network.protocols.player_position.send(self.conn, Player.getPosBlocking(), Player.getVelBlocking(), @intCast(newTime & 65535));
 		self.dayTime.update(deltaTime);
 	}
 
@@ -524,10 +526,10 @@ pub var projectionMatrix: Mat4f = Mat4f.identity();
 var nextBlockPlaceTime: ?std.Io.Timestamp = null;
 var nextBlockBreakTime: ?std.Io.Timestamp = null;
 
-pub fn pressPlace(mods: main.Window.Key.Modifiers) void {
+pub fn pressPlace(modifiers: main.Window.Key.Modifiers) void {
 	const time = main.timestamp();
 	nextBlockPlaceTime = time.addDuration(main.settings.updateRepeatDelay);
-	Player.placeBlock(mods);
+	Player.placeBlock(modifiers);
 }
 
 pub fn releasePlace(_: main.Window.Key.Modifiers) void {
@@ -799,7 +801,7 @@ pub fn restart() void {
 	if (world) |_world| {
 		_world.pause();
 
-		network.protocols.reload.informServerOfRestart(_world.conn);
+		mods.cubyz.network.protocols.reload.informServerOfRestart(_world.conn);
 
 		_world.@"continue"() catch |err| {
 			std.log.err("Encountered error while opening world: {s}", .{@errorName(err)});

@@ -7,7 +7,6 @@ const Pattern = main.blueprint.Pattern;
 const NeverFailingAllocator = main.heap.NeverFailingAllocator;
 const ListManaged = main.ListManaged;
 const User = main.server.User;
-pub const commandList = @import("command/_list.zig");
 
 pub const Source = union(enum) {
 	user: *User,
@@ -38,34 +37,35 @@ pub const Command = struct {
 
 pub var commands: std.StringHashMap(Command) = undefined;
 
-fn initExecutionFn(comptime name: []const u8) *const fn (args: []const u8, source: Source) void {
-	const ArgPaser = main.argparse.Parser(@field(commandList, name).Args, .{.commandName = name});
-	return struct {
+pub fn init() void {
+	commands = .init(main.globalAllocator.allocator);
+	main.mods.walkFeatureContext(.commands, void, undefined, registerCommand);
+}
+
+fn registerCommand(_: void, descriptor: main.mods.ObjectDescriptor) void {
+	const ArgParser = main.argparse.Parser(descriptor.object.Args, .{.commandName = descriptor.id});
+	const exec = struct {
 		fn exec(msg: []const u8, source: Source) void {
 			const arena: main.heap.NeverFailingAllocator = .createArena(main.stackAllocator);
 			defer main.stackAllocator.destroyArena(arena);
 			var errorMessage: main.ListManaged(u8) = .init(arena);
-			const result = ArgPaser.parse(arena, msg, &errorMessage) catch {
+			const result = ArgParser.parse(arena, msg, &errorMessage) catch {
 				source.sendMessage("#ff0000{s}", .{errorMessage.items});
 				return;
 			};
-			@field(commandList, name).execute(result, source);
+			descriptor.object.execute(result, source);
 		}
 	}.exec;
-}
 
-pub fn init() void {
-	commands = .init(main.globalAllocator.allocator);
-	inline for (@typeInfo(commandList).@"struct".decls) |decl| {
-		commands.put(decl.name, .{
-			.name = decl.name,
-			.description = @field(commandList, decl.name).description,
-			.usage = @field(commandList, decl.name).usage,
-			.exec = initExecutionFn(decl.name),
-			.permissionPath = "/command/" ++ decl.name,
-		}) catch unreachable;
-		std.log.debug("Registered command: '/{s}'", .{decl.name});
-	}
+	commands.put(descriptor.id, .{
+		.name = descriptor.id,
+		.description = descriptor.object.description,
+		.usage = descriptor.object.usage,
+		.exec = exec,
+		.permissionPath = "/command/" ++ descriptor.id,
+	}) catch unreachable;
+
+	std.log.debug("Registered command: '/{s}'", .{descriptor.id});
 }
 
 pub fn deinit() void {

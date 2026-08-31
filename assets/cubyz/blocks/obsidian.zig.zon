@@ -15,7 +15,7 @@
 			.textureRoughness = 0.1,
 			.modifiers = .{
 				.{
-					.id = "fragile",
+					.id = "cubyz:fragile",
 					.strength = 0.33,
 				},
 			},

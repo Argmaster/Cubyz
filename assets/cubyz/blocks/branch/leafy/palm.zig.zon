@@ -5,7 +5,7 @@
 		.textureSlotOffset = 6,
 	},
 	.onUpdate = .{
-		.type = .decay,
+		.type = "cubyz:decay",
 		.drops = .{
 			.{.items = .{"cubyz:branch/palm"}},
 		},

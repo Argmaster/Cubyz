@@ -33,6 +33,7 @@ pub const players = @import("players.zig");
 pub const BlockDrop = @import("BlockDrop.zig");
 
 pub const command = @import("command.zig");
+const mods = @import("mods");
 
 pub const WorldEditData = struct {
 	const maxWorldEditHistoryCapacity: u32 = 1024;
@@ -160,7 +161,7 @@ pub const User = struct { // MARK: User
 		self.* = .{};
 		self.conn = try Connection.init(manager, ipPort, self);
 		self.@"continue"();
-		network.protocols.handShake.serverSide(self.conn);
+		mods.cubyz.network.protocols.hand_shake.serverSide(self.conn);
 		return self;
 	}
 	pub fn @"continue"(self: *User) void {
@@ -503,7 +504,7 @@ pub const User = struct { // MARK: User
 			var reader: BinaryReader = .init(commandData);
 			main.sync.server.executeUserCommand(self, &reader) catch |err| {
 				if (err == error.InventoryNotFound) {
-					main.network.protocols.inventory.sendFailure(self.conn);
+					mods.cubyz.network.protocols.inventory.sendFailure(self.conn);
 				} else {
 					std.log.err("Got error while executing user command: {s}. Disconnecting.", .{@errorName(err)});
 					std.log.debug("Command data: {any}", .{commandData});
@@ -554,7 +555,7 @@ pub const User = struct { // MARK: User
 		self.sendRawMessage(msg);
 	}
 	pub fn sendRawMessage(self: *User, msg: []const u8) void {
-		main.network.protocols.chat.send(self.conn, msg);
+		mods.cubyz.network.protocols.chat.send(self.conn, msg);
 	}
 
 	pub fn getSpawnPos(user: *User) Vec3d {
@@ -703,7 +704,7 @@ fn update() void { // MARK: update()
 		});
 	}
 	for (userList) |user| {
-		main.network.protocols.entityPosition.send(user.conn, user.player().pos, entityData.items, itemData);
+		mods.cubyz.network.protocols.entity_position.send(user.conn, user.player().pos, entityData.items, itemData);
 	}
 
 	for (userList) |user| {
@@ -711,7 +712,7 @@ fn update() void { // MARK: update()
 		const biomeId = world.?.getBiome(pos[0], pos[1], pos[2]).paletteId;
 		if (biomeId != user.lastSentBiomeId) {
 			user.lastSentBiomeId = biomeId;
-			main.network.protocols.genericUpdate.sendBiome(user.conn, biomeId);
+			mods.cubyz.network.protocols.biome.send(user.conn, biomeId);
 		}
 	}
 
@@ -815,7 +816,7 @@ pub fn removePlayer(user: *User) void { // MARK: removePlayer()
 	const userList = getUserList(main.stackAllocator);
 	defer main.stackAllocator.free(userList);
 	for (userList) |other| {
-		main.network.protocols.entity.send(other.conn, data);
+		mods.cubyz.network.protocols.entity.send(other.conn, data);
 	}
 }
 
@@ -825,7 +826,7 @@ pub fn connect(user: *User) void {
 
 pub fn connectInternal(user: *User) void {
 	user.initPlayer();
-	main.network.protocols.handShake.sendServerPlayerData(user.conn);
+	mods.cubyz.network.protocols.hand_shake.sendServerPlayerData(user.conn);
 	user.conn.handShakeState.store(.complete, .monotonic);
 
 	// TODO: addEntity(player);
@@ -850,7 +851,7 @@ pub fn connectInternal(user: *User) void {
 		const data = zonArray.toStringEfficient(main.stackAllocator, &.{});
 		defer main.stackAllocator.free(data);
 		for (userList) |other| {
-			main.network.protocols.entity.send(other.conn, data);
+			mods.cubyz.network.protocols.entity.send(other.conn, data);
 		}
 	}
 	{ // Let this client know about the others:
@@ -862,10 +863,10 @@ pub fn connectInternal(user: *User) void {
 		}
 		const data = zonArray.toStringEfficient(main.stackAllocator, &.{});
 		defer main.stackAllocator.free(data);
-		if (user.connected.load(.monotonic)) main.network.protocols.entity.send(user.conn, data);
+		if (user.connected.load(.monotonic)) mods.cubyz.network.protocols.entity.send(user.conn, data);
 	}
 	const initialList = getInitialEntityList(main.stackAllocator);
-	main.network.protocols.entity.send(user.conn, initialList);
+	mods.cubyz.network.protocols.entity.send(user.conn, initialList);
 	main.stackAllocator.free(initialList);
 	sendMessage("{s}§#ffff00 joined", .{user.name});
 

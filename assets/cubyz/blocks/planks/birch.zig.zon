@@ -9,7 +9,7 @@
 			.textureRoughness = 0.7,
 			.modifiers = .{
 				.{
-					.id = "durable",
+					.id = "cubyz:durable",
 					.strength = 0.4,
 				},
 			},

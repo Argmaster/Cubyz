@@ -87,101 +87,261 @@ fn linkLibraries(b: *std.Build, exe: *std.Build.Step.Compile, useLocalDeps: bool
 	}
 }
 
-pub fn makeModFeature(io: std.Io, step: *std.Build.Step, name: []const u8) !void {
-	var featureList: std.ArrayListUnmanaged(u8) = .empty;
-	defer featureList.deinit(step.owner.allocator);
+const ModFeatures = struct {
+	const features = @import("src/features.zig");
+	const knownFeatures = features.knownFeatures;
 
-	var modDir = try std.Io.Dir.cwd().openDir(io, "mods", .{.iterate = true});
-	defer modDir.close(io);
+	fn addStep(b: *std.Build, exe: *std.Build.Step.Compile) !void {
+		const step = try b.allocator.create(std.Build.Step);
+		step.* = std.Build.Step.init(.{
+			.id = .custom,
+			.name = "Create Mods",
+			.owner = b,
+			.makeFn = generateModFeatureFiles,
+		});
+		exe.step.dependOn(step);
 
-	var iterator = modDir.iterate();
-	while (try iterator.next(io)) |modEntry| {
-		if (modEntry.kind != .directory) continue;
-
-		var mod = try modDir.openDir(io, modEntry.name, .{});
-		defer mod.close(io);
-
-		var featureDir = mod.openDir(io, name, .{.iterate = true}) catch continue;
-		defer featureDir.close(io);
-
-		var featureWalker = try std.Io.Dir.walk(featureDir, step.owner.allocator);
-		defer featureWalker.deinit();
-
-		var modFeatureList: std.ArrayListUnmanaged([]const u8) = .empty;
-		defer modFeatureList.deinit(step.owner.allocator);
-
-		while (try featureWalker.next(io)) |featureEntry| {
-			if (featureEntry.kind != .file) continue;
-			if (!std.mem.endsWith(u8, featureEntry.basename, ".zig")) continue;
-
-			const normalizedPath = step.owner.dupe(featureEntry.path);
-			defer step.owner.allocator.free(normalizedPath);
-			if (std.Io.Dir.path.sep != '/') std.mem.replaceScalar(u8, normalizedPath, std.Io.Dir.path.sep, '/');
-
-			try modFeatureList.append(step.owner.allocator, step.owner.fmt(
-				\\pub const @"{s}:{s}" = @import("{s}/{s}/{s}");
-			,
-				.{
-					modEntry.name,
-					normalizedPath[0 .. normalizedPath.len - 4],
-					modEntry.name,
-					name,
-					normalizedPath,
-				},
-			));
-		}
-		std.mem.sort([]const u8, modFeatureList.items, {}, struct {
-			fn lessThanFn(_: void, lhs: []const u8, rhs: []const u8) bool {
-				return std.mem.lessThan(u8, lhs, rhs);
-			}
-		}.lessThanFn);
-
-		if (featureList.items.len != 0) try featureList.append(step.owner.allocator, '\n');
-		try featureList.appendSlice(step.owner.allocator, step.owner.fmt(
-			\\// MARK: {s}
-			\\
-		, .{modEntry.name}));
-
-		for (modFeatureList.items, 0..) |item, i| {
-			if (i != 0) try featureList.append(step.owner.allocator, '\n');
-			try featureList.appendSlice(step.owner.allocator, item);
-		}
-		try featureList.append(step.owner.allocator, '\n');
+		const module = b.createModule(.{
+			.root_source_file = b.path(b.fmt("mods/_mods.zig", .{})),
+			.target = exe.root_module.resolved_target,
+			.optimize = exe.root_module.optimize,
+		});
+		module.addImport("main", exe.root_module);
+		module.addImport("mods", module);
+		exe.root_module.addImport("mods", module);
 	}
 
-	const file_path = step.owner.fmt("mods/{s}.zig", .{name});
-	try std.Io.Dir.cwd().writeFile(io, .{.data = featureList.items, .sub_path = file_path});
-}
+	/// Recursively iterate through all directories in the `mods` directory.
+	/// For each create a file with same name as the directory which contains imports for all files in that directory.
+	/// Each imported file is assigned to a public constant with same name as the file.
+	pub fn generateModFeatureFiles(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
+		var ctx = GenerationContext.init(step, options);
+		defer ctx.deinit();
 
-pub fn addModFeatureModule(b: *std.Build, exe: *std.Build.Step.Compile, name: []const u8) !void {
-	const module = b.createModule(.{
-		.root_source_file = b.path(b.fmt("mods/{s}.zig", .{name})),
-		.target = exe.root_module.resolved_target,
-		.optimize = exe.root_module.optimize,
-	});
-	module.addImport("main", exe.root_module);
-	exe.root_module.addImport(name, module);
-}
+		var modDir = try std.Io.Dir.cwd().openDir(ctx.io, "mods", .{.iterate = true});
+		defer modDir.close(ctx.io);
 
-fn addModFeatures(b: *std.Build, exe: *std.Build.Step.Compile) !void {
-	const step = try b.allocator.create(std.Build.Step);
-	step.* = std.Build.Step.init(.{
-		.id = .custom,
-		.name = "Create Mods",
-		.owner = b,
-		.makeFn = makeModFeaturesStep,
-	});
-	exe.step.dependOn(step);
+		var path: std.ArrayListUnmanaged([]const u8) = .empty;
+		defer path.deinit(step.owner.allocator);
 
-	try addModFeatureModule(b, exe, "rotations");
-}
+		var dirCtx = DirectoryContext.init(&ctx, "mods", modDir);
+		defer dirCtx.deinit();
 
-pub fn makeModFeaturesStep(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
-	var io = std.Io.Threaded.init(options.gpa, .{});
-	defer io.deinit();
+		try dirCtx.recurseAndGenerateFiles(&path);
+	}
 
-	try makeModFeature(io.io(), step, "rotations");
-}
+	const GenerationContext = struct {
+		step: *std.Build.Step,
+		allocator: std.mem.Allocator,
+		options: std.Build.Step.MakeOptions,
+		threaded_io: std.Io.Threaded,
+		io: std.Io,
+
+		fn init(step: *std.Build.Step, options: std.Build.Step.MakeOptions) GenerationContext {
+			var threaded_io = std.Io.Threaded.init(options.gpa, .{});
+			return GenerationContext{
+				.step = step,
+				.allocator = step.owner.allocator,
+				.options = options,
+				.threaded_io = threaded_io,
+				.io = threaded_io.io(),
+			};
+		}
+		fn deinit(self: *GenerationContext) void {
+			self.threaded_io.deinit();
+		}
+	};
+
+	const DirectoryContext = struct {
+		ctx: *GenerationContext,
+		name: []const u8,
+		dir: std.Io.Dir,
+		// We are doing a lot of string operations and its impractical to add deinit code for all of them, thus arena to batch dealloc everything.
+		localArena: std.heap.ArenaAllocator,
+		allocator: std.mem.Allocator,
+
+		// Since we want import entries sorted, we can't immediately use single u8 array for file content.
+		importLines: std.ArrayListUnmanaged([]const u8) = .empty,
+		fileSymbols: std.ArrayListUnmanaged([]const u8) = .empty,
+		directorySymbols: std.ArrayListUnmanaged([]const u8) = .empty,
+		// This buffer is used to compose the final autogenerated file.
+		fileContent: std.ArrayListUnmanaged(u8) = .empty,
+
+		pub fn init(ctx: *GenerationContext, name: []const u8, dir: std.Io.Dir) DirectoryContext {
+			var localArena = std.heap.ArenaAllocator.init(ctx.allocator);
+			return DirectoryContext{
+				.ctx = ctx,
+				.name = name,
+				.dir = dir,
+				.localArena = localArena,
+				.allocator = localArena.allocator(),
+			};
+		}
+		pub fn deinit(self: *DirectoryContext) void {
+			self.localArena.deinit();
+		}
+
+		/// Generate a meta file for given directory, recurse into subdirectories and repeat.
+		/// `path` is an array used to track the traversed path as we go deeper into subdirectory structure, to allow generating feature IDs.
+		/// `dir` and `name` refer to the directory which is currently being processed.
+		fn recurseAndGenerateFiles(self: *DirectoryContext, path: *std.ArrayListUnmanaged([]const u8)) !void {
+			var iterator = self.dir.iterate();
+			while (try iterator.next(self.ctx.io)) |entry| {
+				if (std.mem.startsWith(u8, entry.name, "_")) continue;
+
+				switch (entry.kind) {
+					.file => {
+						if (!std.mem.endsWith(u8, entry.name, ".zig")) continue;
+						const nameWithoutExtension = entry.name[0 .. entry.name.len - 4];
+
+						try self.fileSymbols.append(self.allocator, try self.allocator.dupe(u8, nameWithoutExtension));
+						try self.importLines.append(self.allocator, try std.fmt.allocPrint(self.allocator,
+							\\pub const @"{s}" = @import("{s}");
+							\\
+						, .{nameWithoutExtension, entry.name}));
+					},
+					.directory => {
+						var subDir = try self.dir.openDir(self.ctx.io, entry.name, .{.iterate = true});
+						defer subDir.close(self.ctx.io);
+
+						try path.append(self.allocator, entry.name);
+						defer _ = path.pop();
+
+						var dirCtx = DirectoryContext.init(self.ctx, entry.name, subDir);
+						defer dirCtx.deinit();
+
+						try dirCtx.recurseAndGenerateFiles(path);
+
+						try self.directorySymbols.append(self.allocator, try self.allocator.dupe(u8, entry.name));
+						try self.importLines.append(self.allocator, try std.fmt.allocPrint(self.allocator,
+							\\pub const @"{s}" = @import("{s}/_{s}.zig");
+							\\
+						, .{entry.name, entry.name, entry.name}));
+					},
+					else => {},
+				}
+			}
+
+			std.mem.sort([]const u8, self.importLines.items, {}, strLessThanFn);
+			std.mem.sort([]const u8, self.fileSymbols.items, {}, strLessThanFn);
+			std.mem.sort([]const u8, self.directorySymbols.items, {}, strLessThanFn);
+
+			try self.generateModMetaStruct(path.items);
+
+			const filePath = try std.fmt.allocPrint(self.allocator, "_{s}.zig", .{self.name});
+			const file = try self.dir.createFile(self.ctx.io, filePath, .{});
+			defer file.close(self.ctx.io);
+
+			try self.dir.writeFile(self.ctx.io, .{.data = self.fileContent.items, .sub_path = filePath});
+		}
+
+		fn strLessThanFn(_: void, lhs: []const u8, rhs: []const u8) bool {
+			return std.mem.lessThan(u8, lhs, rhs);
+		}
+
+		// Create _ModMeta struct with mod metadata that simplifies iteration and allows to reliably identify things to be recognized as mods and mod features.
+		fn generateModMetaStruct(self: *DirectoryContext, path: []const []const u8) !void {
+			std.debug.assert(self.fileContent.items.len == 0);
+
+			self.fileContent = try std.ArrayListUnmanaged(u8).initCapacity(self.allocator, self.importLines.items.len*48);
+			self.fileContent.appendSlice(self.allocator, "// This file is automatically generated by build.zig. Do not edit manually.\n\n") catch {};
+			for (self.importLines.items) |line| try self.fileContent.appendSlice(self.allocator, line);
+
+			try self.fileContent.appendSlice(self.allocator,
+				\\
+				\\pub const _ModMeta = struct {
+				\\
+			);
+			try self.fileContent.appendSlice(self.allocator, "\tpub const main = @import(\"main\");\n");
+			const strippedPath = try self.generateAndGetFeatureConst(path);
+			try self.generateSumbolDescriptorTable("files", self.fileSymbols.items, path, strippedPath);
+			try self.generateSumbolDescriptorTable("directories", self.directorySymbols.items, path, strippedPath);
+
+			// Close ModMeata struct.
+			try self.fileContent.appendSlice(self.allocator, "};\n");
+		}
+
+		fn generateAndGetFeatureConst(self: *DirectoryContext, path: []const []const u8) ![]const []const u8 {
+			const featurePrefix = matchKnownFeaturePrefix(path);
+			const strippedPath = stripKnownFeaturePrefix(path, featurePrefix);
+			// Provide feature field
+			{
+				const nextLine = if (featurePrefix.len > 0) try std.mem.join(self.allocator, "/", featurePrefix) else "other";
+				try self.fileContent.appendSlice(self.allocator, try std.fmt.allocPrint(self.allocator, "\tpub const feature: main.mods.Feature = .@\"{s}\";\n", .{nextLine}));
+			}
+			return strippedPath;
+		}
+
+		fn generateSumbolDescriptorTable(self: *DirectoryContext, tableName: []const u8, symbols: []const []const u8, path: []const []const u8, strippedPath: []const []const u8) !void {
+			{
+				const nextLine = try std.fmt.allocPrint(self.allocator, "\tpub const {s}: [{}]main.mods.ObjectDescriptor = .{{\n", .{tableName, symbols.len});
+				try self.fileContent.appendSlice(self.allocator, nextLine);
+			}
+			for (symbols) |symbolName| {
+				const mod = getModName(path, symbolName);
+				const id = try makeFeatureId(self.allocator, mod, strippedPath, symbolName);
+				const nextLine = try std.fmt.allocPrint(self.allocator, "\t\t.{{ .mod = \"{s}\", .id = \"{s}\", .object = @\"{s}\" }},\n", .{mod, id, symbolName});
+				try self.fileContent.appendSlice(self.allocator, nextLine);
+			}
+			try self.fileContent.appendSlice(self.allocator, "\t};\n");
+		}
+
+		fn getModName(path: []const []const u8, symbolName: []const u8) []const u8 {
+			if (path.len >= 1) return path[0];
+			return symbolName;
+		}
+	};
+
+	fn matchKnownFeaturePrefix(path: []const []const u8) []const []const u8 {
+		if (path.len <= 1) return &.{};
+
+		const skipMod = path[1..];
+		// Some features may have partially overlapping prefixes.
+		var longestFeaturePrefix: []const []const u8 = &.{};
+
+		for (knownFeatures) |known| failed: {
+			if (known.len > skipMod.len) continue;
+
+			for (0..known.len) |i| {
+				if (std.mem.eql(u8, known[i], skipMod[i])) continue;
+				break :failed;
+			}
+
+			if (known.len > longestFeaturePrefix.len) longestFeaturePrefix = known;
+		}
+
+		return longestFeaturePrefix;
+	}
+
+	fn stripKnownFeaturePrefix(path: []const []const u8, prefix: []const []const u8) []const []const u8 {
+		if (prefix.len == 0) {
+			if (path.len < 1) return &.{};
+			return path[1..];
+		}
+		if (path.len < 1 + prefix.len) return &.{};
+		return path[1 + prefix.len ..];
+	}
+
+	/// Construct a feature ID string.
+	/// This function is well defined for files, for directories produces stable, but less meaningful results which are not used anywhere in the engine.
+	/// `path` has to be stripped of mod name and known feature prefix for the ID to be correct.
+	/// `suffix` is the name of the file without extension.
+	fn makeFeatureId(allocator: std.mem.Allocator, mod: []const u8, path: []const []const u8, suffix: []const u8) ![]const u8 {
+		var totalLen = mod.len + 1 + suffix.len;
+		for (path) |segment| totalLen += segment.len + 1;
+
+		var buffer = try std.ArrayListUnmanaged(u8).initCapacity(allocator, totalLen);
+		buffer.appendSliceAssumeCapacity(mod);
+		buffer.appendSliceAssumeCapacity(":");
+		for (path) |segment| {
+			buffer.appendSliceAssumeCapacity(segment);
+			buffer.appendSliceAssumeCapacity("/");
+		}
+		buffer.appendSliceAssumeCapacity(suffix);
+
+		return buffer.items;
+	}
+};
 
 fn createLaunchConfig(b: *std.Build) !void {
 	var io = std.Io.Threaded.init(b.allocator, .{});
@@ -262,7 +422,7 @@ pub fn build(b: *std.Build) !void {
 	});
 	exe.root_module.addOptions("build_options", options);
 	exe.root_module.addImport("main", mainModule);
-	try addModFeatures(b, exe);
+	try ModFeatures.addStep(b, exe);
 
 	if (isRelease and target.result.os.tag == .windows) {
 		exe.subsystem = .windows;
@@ -324,7 +484,7 @@ pub fn build(b: *std.Build) !void {
 	linkLibraries(b, exe_tests, useLocalDeps);
 	exe_tests.root_module.addOptions("build_options", options);
 	exe_tests.root_module.addImport("main", mainModule);
-	try addModFeatures(b, exe_tests);
+	try ModFeatures.addStep(b, exe_tests);
 	const run_exe_tests = b.addRunArtifact(exe_tests);
 
 	const test_step = b.step("test", "Run unit tests");

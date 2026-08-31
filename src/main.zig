@@ -11,7 +11,7 @@ pub const block_entity = @import("block_entity.zig");
 pub const blocks = @import("blocks.zig");
 pub const blueprint = @import("blueprint.zig");
 const c = @import("c");
-pub const callbacks = @import("callbacks/callbacks.zig");
+pub const callbacks = @import("callbacks.zig");
 pub const chunk = @import("chunk.zig");
 pub const client = @import("client.zig");
 pub const entity = @import("entity.zig");
@@ -26,6 +26,7 @@ pub const log = @import("log.zig");
 pub const meta = @import("meta.zig");
 pub const migrations = @import("migrations.zig");
 pub const models = @import("models.zig");
+pub const mods = @import("mods.zig");
 pub const network = @import("network.zig");
 pub const particles = @import("particles.zig");
 pub const physics = @import("physics.zig");
@@ -88,9 +89,9 @@ pub const std_options: std.Options = .{ // MARK: std_options
 };
 
 // MARK: Callbacks
-fn escape(mods: Window.Key.Modifiers) void {
+fn escape(modifiers: Window.Key.Modifiers) void {
 	if (gui.selectedTextInput != null) gui.setSelectedTextInput(null);
-	inventory(mods);
+	inventory(modifiers);
 }
 fn inventory(_: Window.Key.Modifiers) void {
 	if (game.world == null) return;
@@ -103,21 +104,21 @@ fn ungrabMouse(_: Window.Key.Modifiers) void {
 		gui.toggleGameMenu();
 	}
 }
-fn openCreativeInventory(mods: Window.Key.Modifiers) void {
+fn openCreativeInventory(modifiers: Window.Key.Modifiers) void {
 	if (game.world == null) return;
 	if (!game.Player.isCreative()) return;
-	ungrabMouse(mods);
+	ungrabMouse(modifiers);
 	gui.openWindow("creative_inventory");
 }
-fn openChat(mods: Window.Key.Modifiers) void {
+fn openChat(modifiers: Window.Key.Modifiers) void {
 	if (!gui.isWindowOpen("chat")) return;
-	ungrabMouse(mods);
+	ungrabMouse(modifiers);
 	gui.openWindow("chat");
 	gui.windowlist.chat.input.select();
 }
-fn openCommand(mods: Window.Key.Modifiers) void {
+fn openCommand(modifiers: Window.Key.Modifiers) void {
 	if (!gui.isWindowOpen("chat")) return;
-	openChat(mods);
+	openChat(modifiers);
 	gui.windowlist.chat.input.clear();
 	gui.windowlist.chat.input.inputCharacter('/');
 }

@@ -20,6 +20,8 @@ const Vec3i = vec.Vec3i;
 const ZonElement = main.ZonElement;
 const BlockDrop = main.server.BlockDrop;
 
+const mods = @import("mods");
+
 const @"cubyz:bag" = main.entity.components.@"cubyz:bag";
 
 pub const Side = enum { client, server };
@@ -58,7 +60,7 @@ pub const client = struct { // MARK: client
 		cmd.do(main.globalAllocator, .client, null, main.game.Player.gamemode.raw) catch unreachable;
 		const data = cmd.serializePayload(main.stackAllocator);
 		defer main.stackAllocator.free(data);
-		main.network.protocols.inventory.sendCommand(main.game.world.?.conn, cmd.payload, data);
+		mods.cubyz.network.protocols.inventory.sendCommand(main.game.world.?.conn, cmd.payload, data);
 		commands.pushBack(cmd);
 	}
 
@@ -149,7 +151,7 @@ pub const server = struct { // MARK: server
 		const syncData = op.serialize(main.stackAllocator);
 		defer main.stackAllocator.free(syncData);
 
-		main.network.protocols.inventory.sendSyncOperation(target.conn, syncData);
+		mods.cubyz.network.protocols.inventory.sendSyncOperation(target.conn, syncData);
 	}
 
 	pub fn executeCommand(payload: Command.Payload, source: ?*main.server.User) void {
@@ -157,13 +159,13 @@ pub const server = struct { // MARK: server
 			.payload = payload,
 		};
 		command.do(main.globalAllocator, .server, source, if (source) |s| s.gamemode.raw else .creative) catch {
-			main.network.protocols.inventory.sendFailure(source.?.conn);
+			mods.cubyz.network.protocols.inventory.sendFailure(source.?.conn);
 			return;
 		};
 		if (source != null) {
 			const confirmationData = command.confirmationData(main.stackAllocator);
 			defer main.stackAllocator.free(confirmationData);
-			main.network.protocols.inventory.sendConfirmation(source.?.conn, confirmationData);
+			mods.cubyz.network.protocols.inventory.sendConfirmation(source.?.conn, confirmationData);
 		}
 		for (command.syncOperations.items) |op| {
 			const syncData = op.serialize(main.stackAllocator);
@@ -174,7 +176,7 @@ pub const server = struct { // MARK: server
 
 			for (users) |user| {
 				if (user == source and op.ignoreSource()) continue;
-				main.network.protocols.inventory.sendSyncOperation(user.conn, syncData);
+				mods.cubyz.network.protocols.inventory.sendSyncOperation(user.conn, syncData);
 			}
 		}
 		if (source != null and command.payload == .open) { // Send initial items
@@ -187,7 +189,7 @@ pub const server = struct { // MARK: server
 					}};
 					const syncData = syncOp.serialize(main.stackAllocator);
 					defer main.stackAllocator.free(syncData);
-					main.network.protocols.inventory.sendSyncOperation(source.?.conn, syncData);
+					mods.cubyz.network.protocols.inventory.sendSyncOperation(source.?.conn, syncData);
 				}
 			}
 		}
@@ -214,7 +216,7 @@ pub const server = struct { // MARK: server
 	fn setGamemode(user: *main.server.User, gamemode: Gamemode) void {
 		threadContext.assertCorrectContext(.server);
 		user.gamemode.store(gamemode, .monotonic);
-		main.network.protocols.genericUpdate.sendGamemode(user.conn, gamemode);
+		mods.cubyz.network.protocols.gamemode.send(user.conn, gamemode);
 	}
 };
 
@@ -1597,7 +1599,7 @@ pub const Command = struct { // MARK: Command
 					defer writer.deinit();
 
 					const actualBlock = main.server.world.?.getBlockAndBlockEntityData(self.pos[0], self.pos[1], self.pos[2], &writer) orelse return;
-					main.network.protocols.blockUpdate.send(ctx.user.?.conn, &.{.init(self.pos, actualBlock, writer.data.items)});
+					mods.cubyz.network.protocols.block_update.send(ctx.user.?.conn, &.{.init(self.pos, actualBlock, writer.data.items)});
 				}
 				return;
 			}
@@ -1609,7 +1611,7 @@ pub const Command = struct { // MARK: Command
 					defer writer.deinit();
 
 					const actualBlock = main.server.world.?.getBlockAndBlockEntityData(self.pos[0], self.pos[1], self.pos[2], &writer) orelse return;
-					main.network.protocols.blockUpdate.send(ctx.user.?.conn, &.{.init(self.pos, actualBlock, writer.data.items)});
+					mods.cubyz.network.protocols.block_update.send(ctx.user.?.conn, &.{.init(self.pos, actualBlock, writer.data.items)});
 					return error.serverFailure;
 				}
 			}

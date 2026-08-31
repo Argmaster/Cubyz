@@ -20,11 +20,11 @@
 	},
 	.lodReplacement = "cubyz:air",
 	.onTouch = .{
-		.type = .hurt,
+		.type = "cubyz:hurt",
 		.dps = 0.2,
 		.damageType = .spiky,
 	},
 	.onUpdate = .{
-		.type = .check_support_blocks,
+		.type = "cubyz:check_support_blocks",
 	},
 }

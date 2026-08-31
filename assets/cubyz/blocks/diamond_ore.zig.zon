@@ -25,22 +25,22 @@
 			.textureRoughness = 0.1,
 			.modifiers = .{
 				.{
-					.id = "fragile",
+					.id = "cubyz:fragile",
 					.strength = 0.5,
 					.restriction = .{
-						.id = .not,
+						.id = "cubyz:not",
 						.child = .{
-							.id = .encased,
+							.id = "cubyz:encased",
 							.tag = .precious,
 							.amount = 4,
 						},
 					},
 				},
 				.{
-					.id = "powerful",
+					.id = "cubyz:powerful",
 					.strength = 0.5,
 					.restriction = .{
-						.id = .encased,
+						.id = "cubyz:encased",
 						.tag = .precious,
 						.amount = 4,
 					},

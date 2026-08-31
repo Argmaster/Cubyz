@@ -1,7 +1,7 @@
 .{
 	.tags = .{.choppable, .wood, .branch},
 	.onUpdate = .{
-		.type = .decay,
+		.type = "cubyz:decay",
 	},
 	.blockHealth = 4,
 	.texture0 = "cubyz:branch/birch/dot",
@@ -23,7 +23,7 @@
 			.textureRoughness = 0.7,
 			.modifiers = .{
 				.{
-					.id = "durable",
+					.id = "cubyz:durable",
 					.strength = 0.45,
 				},
 			},
