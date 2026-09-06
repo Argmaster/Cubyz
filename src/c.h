@@ -10,6 +10,7 @@
 #include <freetype/ftsynth.h>
 #include <hb.h>
 #include <hb-ft.h>
+#include <flecs.h>
 
 // used for rendering, windowing and inputs
 #include <glad/gl.h>

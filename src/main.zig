@@ -407,6 +407,13 @@ pub fn main(args: std.process.Init.Minimal) void { // MARK: main()
 	if (!headless) systems.client.init();
 	defer if (!headless) systems.client.deinit();
 
+	const ecs = @import("ecs.zig");
+	const world = ecs.World.init();
+	defer world.deinit();
+
+	const entity1 = world.new();
+	entity1.deinit();
+
 	if (!headless) entity.client.init();
 	defer if (!headless) entity.client.deinit();
 

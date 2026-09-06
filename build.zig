@@ -77,6 +77,7 @@ fn linkLibraries(b: *std.Build, exe: *std.Build.Step.Compile, useLocalDeps: bool
 		exe.root_module.linkSystemLibrary("ole32", .{});
 		exe.root_module.linkSystemLibrary("opengl32", .{});
 		exe.root_module.linkSystemLibrary("ws2_32", .{});
+		exe.root_module.linkSystemLibrary("dbghelp", .{});
 	} else if (t.os.tag == .macos) {
 		exe.root_module.linkFramework("Cocoa", .{});
 		exe.root_module.linkFramework("CoreFoundation", .{});
@@ -232,7 +233,7 @@ pub fn build(b: *std.Build) !void {
 	options.addOption([]const u8, "version", version);
 	options.addOption(bool, "isTaggedRelease", isRelease);
 
-	const useLocalDeps = b.option(bool, "local", "Use local cubyz_deps") orelse false;
+	const useLocalDeps = b.option(bool, "local", "Use local cubyz_deps") orelse true;
 
 	const largeAssets = b.dependency("cubyz_large_assets", .{});
 	b.installDirectory(.{
