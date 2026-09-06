@@ -18,8 +18,8 @@ pub const usage =
 ;
 
 pub const Args = union(enum) {
-	@"/adjust <mask> <limit>": struct { subcommand: enum { adjust }, mask: command.MaskExpression, limit: ?u32 },
-	@"/adjust <limit>": struct { subcommand: enum { adjust }, limit: ?u32 },
+	@"/adjust <mask> <limit>": struct { mask: command.MaskExpression, limit: ?u32 },
+	@"/adjust <limit>": struct { limit: ?u32 },
 };
 
 pub fn execute(args: Args, source: Source) void {
