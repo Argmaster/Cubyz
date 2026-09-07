@@ -14,6 +14,7 @@ const c = @import("c");
 pub const callbacks = @import("callbacks/callbacks.zig");
 pub const chunk = @import("chunk.zig");
 pub const client = @import("client.zig");
+pub const ecs = @import("ecs.zig");
 pub const entity = @import("entity.zig");
 pub const entityModel = @import("entityModel.zig");
 pub const files = @import("files.zig");
@@ -407,11 +408,12 @@ pub fn main(args: std.process.Init.Minimal) void { // MARK: main()
 	if (!headless) systems.client.init();
 	defer if (!headless) systems.client.deinit();
 
-	const ecs = @import("ecs.zig");
 	const world = ecs.World.init();
 	defer world.deinit();
 
 	const entity1 = world.new();
+	std.debug.assert(entity1.isAlive());
+	std.log.debug("Entity: {s}", .{entity1.getName()});
 	entity1.deinit();
 
 	if (!headless) entity.client.init();

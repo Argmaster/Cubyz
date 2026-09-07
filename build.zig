@@ -175,6 +175,7 @@ fn addModFeatures(b: *std.Build, exe: *std.Build.Step.Compile) !void {
 	exe.step.dependOn(step);
 
 	try addModFeatureModule(b, exe, "rotations");
+	try addModFeatureModule(b, exe, "components");
 }
 
 pub fn makeModFeaturesStep(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
@@ -182,6 +183,7 @@ pub fn makeModFeaturesStep(step: *std.Build.Step, options: std.Build.Step.MakeOp
 	defer io.deinit();
 
 	try makeModFeature(io.io(), step, "rotations");
+	try makeModFeature(io.io(), step, "components");
 }
 
 fn createLaunchConfig(b: *std.Build) !void {
