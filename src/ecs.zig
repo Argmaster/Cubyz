@@ -3,10 +3,6 @@ const std = @import("std");
 const c = @import("c");
 const components = @import("components");
 
-fn ecsId(Component: type) []const u8 {
-	return "FLECS_ID" ++ @typeName(Component) ++ "ID_";
-}
-
 const componentsMeta = blk: {
 	var componentCount: usize = 0;
 	var componentTypes: [1024]type = undefined;
@@ -16,7 +12,7 @@ const componentsMeta = blk: {
 		const componentModule = @field(components, declaration_info.name);
 		for (componentModule.register()) |componentType| {
 			componentTypes[componentCount] = componentType;
-			componentNames[componentCount] = @typeName(componentType);
+			componentNames[componentCount] = ecsId(componentType);
 			componentCount += 1;
 		}
 	}
@@ -34,6 +30,10 @@ const componentsMeta = blk: {
 	};
 	break :blk Meta;
 };
+
+fn ecsId(Component: type) []const u8 {
+	return @typeName(Component);
+}
 
 pub const World = struct {
 	ecsWorld: *c.ecs_world_t,
@@ -65,10 +65,11 @@ pub const World = struct {
 		};
 	}
 	pub fn deinit(self: World) void {
-		std.debug.assert(c.ecs_fini(self.ecsWorld) == 0);
+		const result = c.ecs_fini(self.ecsWorld);
+		std.debug.assert(result == 0);
 	}
-	pub fn new(self: World) FlecsEntity {
-		return FlecsEntity.init(c.ecs_new(self.ecsWorld), &self);
+	pub fn new(self: *const World) FlecsEntity {
+		return FlecsEntity.init(c.ecs_new(self.ecsWorld), self);
 	}
 };
 
@@ -92,10 +93,12 @@ pub const FlecsEntity = struct {
 		return c.ecs_is_alive(self.world.ecsWorld, self.entity_handle);
 	}
 	fn get(self: FlecsEntity,  Component: type) *const Component {
-		return c.ecs_get_id(self.world.ecsWorld, self.entity_handle, ecsId(Component));
+		const componentId = @field(self.world.componentIds, ecsId(Component));
+		return c.ecs_get_id(self.world.ecsWorld, self.entity_handle, componentId);
 	}
 	fn set(self: FlecsEntity, Component: type, value: *const Component) void {
-		c.ecs_set_id(self.world.ecsWorld, self.entity_handle, ecsId(Component), value);
+		const componentId = @field(self.world.componentIds, ecsId(Component));
+		c.ecs_set_id(self.world.ecsWorld, self.entity_handle, componentId, value);
 	}
 };
 
