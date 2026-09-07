@@ -3,29 +3,19 @@ const c = @import("c");
 const components = @import("components");
 
 const componentsMeta = blk: {
-	var componentCount: usize = 0;
-	var componentTypes: [1024]type = undefined;
-	var componentNames: [1024][]const u8 = undefined;
+	const componentCount = @typeInfo(components).@"struct".decls.len;
+	var componentNames: [componentCount][]const u8 = undefined;
 
-	for (@typeInfo(components).@"struct".decls) |declaration_info| {
-		const componentModule = @field(components, declaration_info.name);
-		for (componentModule.register()) |componentType| {
-			componentTypes[componentCount] = componentType;
-			componentNames[componentCount] = ecsId(componentType);
-			componentCount += 1;
-		}
+	for (@typeInfo(components).@"struct".decls, 0..) |declaration_info, index| {
+		const component = @field(components, declaration_info.name);
+		componentNames[index] = ecsId(component);
 	}
 
 	const Meta = struct {
 		const count: usize = componentCount;
+		const names: [componentCount][]const u8 = componentNames;
 
-		const typesStatic: [1024]type = componentTypes;
-		const types: []const type = typesStatic[0..componentCount];
-
-		const namesStatic: [1024][]const u8 = componentNames;
-		const names: []const []const u8 = namesStatic[0..componentCount];
-
-		const IdsType: type = @Struct(.@"extern", null, names[0..count], &@splat(u64), &@splat(.{}));
+		const ComponentIds: type = @Struct(.@"extern", null, names[0..count], &@splat(u64), &@splat(.{}));
 	};
 	break :blk Meta;
 };
@@ -36,24 +26,34 @@ fn ecsId(Component: type) []const u8 {
 
 pub const World = struct {
 	ecsWorld: *c.ecs_world_t,
-	componentIds: componentsMeta.IdsType,
+	componentIds: componentsMeta.ComponentIds,
 
 	pub fn init() World {
 		const world = c.ecs_init() orelse unreachable;
-		var ids: componentsMeta.IdsType = undefined;
+		var ids: componentsMeta.ComponentIds = undefined;
 
-		inline for (componentsMeta.types, componentsMeta.names) |typ, name| {
-			const result = c.ecs_component_init(world, &c.ecs_component_desc_t{.entity = c.ecs_entity_init(world, &c.ecs_entity_desc_t{
-				.use_low_id = true,
-				.name = @typeName(typ),
-				.symbol = @typeName(typ),
-			}), .type = .{
-				.size = @sizeOf(typ),
-				.alignment = @alignOf(typ),
-			}});
-			@field(ids, name) = result;
+		inline for (@typeInfo(components).@"struct".decls) |declaration_info| {
+			const component = @field(components, declaration_info.name);
+			const result = c.ecs_component_init(
+				world,
+				&c.ecs_component_desc_t{
+					.entity = c.ecs_entity_init(
+						world,
+						&c.ecs_entity_desc_t{
+							.use_low_id = true,
+							.name = @typeName(component),
+							.symbol = @typeName(component),
+						},
+					),
+					.type = .{
+						.size = @sizeOf(component),
+						.alignment = @alignOf(component),
+					},
+				},
+			);
+			@field(ids, ecsId(component)) = result;
 			std.debug.assert(result != 0);
-			std.log.debug("Registered component: {s}", .{name});
+			std.log.debug("Registered component: {s}", .{ecsId(component)});
 		}
 		return World{
 			.ecsWorld = world,
@@ -96,8 +96,4 @@ pub const FlecsEntity = struct {
 		const componentId = @field(self.world.componentIds, ecsId(Component));
 		c.ecs_set_id(self.world.ecsWorld, self.entity_handle, componentId, value);
 	}
-};
-
-pub const ComponentId = enum(u64) {
-	_,
 };
