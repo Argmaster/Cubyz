@@ -1,6 +1,7 @@
 const std = @import("std");
 const c = @import("c");
-const components = @import("components");
+
+pub const components = @import("components");
 
 const componentsMeta = blk: {
 	const componentCount = @typeInfo(components).@"struct".decls.len;
@@ -26,6 +27,7 @@ fn ecsId(Component: type) []const u8 {
 
 pub const World = struct {
 	ecsWorld: *c.ecs_world_t,
+	/// We need to retain per-world component IDs to later use them for entities.
 	componentIds: componentsMeta.ComponentIds,
 
 	pub fn init() World {
@@ -88,12 +90,15 @@ pub const FlecsEntity = struct {
 	pub fn isAlive(self: FlecsEntity) bool {
 		return c.ecs_is_alive(self.world.ecsWorld, self.entity_handle);
 	}
-	fn get(self: FlecsEntity, Component: type) *const Component {
+	pub fn get(self: FlecsEntity, Component: type) ?*const Component {
 		const componentId = @field(self.world.componentIds, ecsId(Component));
-		return c.ecs_get_id(self.world.ecsWorld, self.entity_handle, componentId);
+		if (c.ecs_get_id(self.world.ecsWorld, self.entity_handle, componentId)) |result| {
+			return @ptrCast(@alignCast(result));
+		}
+		return null;
 	}
-	fn set(self: FlecsEntity, Component: type, value: *const Component) void {
+	pub fn set(self: FlecsEntity, Component: type, value: Component) void {
 		const componentId = @field(self.world.componentIds, ecsId(Component));
-		c.ecs_set_id(self.world.ecsWorld, self.entity_handle, componentId, value);
+		c.ecs_set_id(self.world.ecsWorld, self.entity_handle, componentId, @sizeOf(Component), &value);
 	}
 };
