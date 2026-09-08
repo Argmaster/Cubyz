@@ -7,49 +7,6 @@ pub const components = @import("components");
 
 var wasCustomOsApiInitialized = false;
 
-const allocationAlignment = std.mem.Alignment.fromByteUnits(64);
-const allocationHeaderSizeBytes = 64;
-
-fn custom_malloc(size: c.ecs_size_t) callconv(.c) ?*anyopaque {
-	const requestedSize: usize = @intCast(size);
-	const totalSizeBytes: usize = requestedSize + allocationHeaderSizeBytes;
-	const allocation = main.globalAllocator.rawAlloc(totalSizeBytes, allocationAlignment, @returnAddress()) orelse return null;
-	const header: *align(64) usize = @ptrCast(@alignCast(allocation));
-	header.* = requestedSize;
-	return @ptrCast(allocation + allocationHeaderSizeBytes);
-}
-
-fn custom_calloc(size: c.ecs_size_t) callconv(.c) ?*anyopaque {
-	const allocation = custom_malloc(size) orelse return null;
-	@memset(@as([*]u8, @ptrCast(allocation))[0..@intCast(size)], 0);
-	return allocation;
-}
-
-fn custom_realloc(ptr: ?*anyopaque, size: c.ecs_size_t) callconv(.c) ?*anyopaque {
-	if (ptr == null) return custom_malloc(size);
-	if (size == 0) {
-		custom_free(ptr);
-		return null;
-	}
-
-	const oldAllocation: [*]align(64) u8 = @alignCast(@as([*]u8, @ptrCast(ptr.?)) - allocationHeaderSizeBytes);
-	const oldHeader: *align(64) usize = @ptrCast(oldAllocation);
-	const oldSize = oldHeader.*;
-	const newAllocation = custom_malloc(size) orelse return null;
-	const newSize: usize = @intCast(size);
-	@memcpy(@as([*]u8, @ptrCast(newAllocation))[0..@min(oldSize, newSize)], @as([*]u8, @ptrCast(ptr.?))[0..@min(oldSize, newSize)]);
-	custom_free(ptr);
-	return newAllocation;
-}
-
-fn custom_free(ptr: ?*anyopaque) callconv(.c) void {
-	const allocationPtr = ptr orelse return;
-	const allocation: [*]align(64) u8 = @alignCast(@as([*]u8, @ptrCast(allocationPtr)) - allocationHeaderSizeBytes);
-	const header: *align(64) usize = @ptrCast(allocation);
-	const size = header.*;
-	main.globalAllocator.rawFree(allocation[0 .. size + allocationHeaderSizeBytes], allocationAlignment, @returnAddress());
-}
-
 const componentsMeta = blk: {
 	const componentCount = @typeInfo(components).@"struct".decls.len;
 	var componentNames: [componentCount][]const u8 = undefined;
@@ -72,6 +29,8 @@ fn ecsId(Component: type) []const u8 {
 	return @typeName(Component);
 }
 
+/// We need to enforce 64 byte alignment for AVX512 SIMD operations.
+/// See https://github.com/SanderMertens/flecs/issues/478
 fn initCustomOsApi() void {
 	wasCustomOsApiInitialized = true;
 
@@ -85,6 +44,50 @@ fn initCustomOsApi() void {
 	my_os_api.free_ = custom_free;
 
 	c.ecs_os_set_api(&my_os_api);
+}
+
+const allocationAlignmentBytes = 64;
+const allocationAlignment = std.mem.Alignment.fromByteUnits(allocationAlignmentBytes);
+const allocationHeaderSizeBytes = allocationAlignmentBytes;
+
+fn custom_malloc(size: c.ecs_size_t) callconv(.c) ?*anyopaque {
+	const requestedSize: usize = @intCast(size);
+	const totalSizeBytes: usize = requestedSize + allocationHeaderSizeBytes;
+	const allocation = main.globalAllocator.rawAlloc(totalSizeBytes, allocationAlignment, @returnAddress()) orelse return null;
+	const header: *align(allocationHeaderSizeBytes) usize = @ptrCast(@alignCast(allocation));
+	header.* = requestedSize;
+	return @ptrCast(allocation + allocationHeaderSizeBytes);
+}
+
+fn custom_calloc(size: c.ecs_size_t) callconv(.c) ?*anyopaque {
+	const allocation = custom_malloc(size) orelse return null;
+	@memset(@as([*]u8, @ptrCast(allocation))[0..@intCast(size)], 0);
+	return allocation;
+}
+
+fn custom_realloc(ptr: ?*anyopaque, size: c.ecs_size_t) callconv(.c) ?*anyopaque {
+	if (ptr == null) return custom_malloc(size);
+	if (size == 0) {
+		custom_free(ptr);
+		return null;
+	}
+
+	const oldAllocation: [*]align(allocationAlignmentBytes) u8 = @alignCast(@as([*]u8, @ptrCast(ptr.?)) - allocationHeaderSizeBytes);
+	const oldHeader: *align(allocationAlignmentBytes) usize = @ptrCast(oldAllocation);
+	const oldSize = oldHeader.*;
+	const newAllocation = custom_malloc(size) orelse return null;
+	const newSize: usize = @intCast(size);
+	@memcpy(@as([*]u8, @ptrCast(newAllocation))[0..@min(oldSize, newSize)], @as([*]u8, @ptrCast(ptr.?))[0..@min(oldSize, newSize)]);
+	custom_free(ptr);
+	return newAllocation;
+}
+
+fn custom_free(ptr: ?*anyopaque) callconv(.c) void {
+	const allocationPtr = ptr orelse return;
+	const allocation: [*]align(allocationAlignmentBytes) u8 = @alignCast(@as([*]u8, @ptrCast(allocationPtr)) - allocationHeaderSizeBytes);
+	const header: *align(allocationAlignmentBytes) usize = @ptrCast(allocation);
+	const size = header.*;
+	main.globalAllocator.rawFree(allocation[0 .. size + allocationHeaderSizeBytes], allocationAlignment, @returnAddress());
 }
 
 pub const World = struct {
@@ -116,11 +119,15 @@ pub const World = struct {
 						.alignment = @alignOf(Component),
 						.hooks = blk: {
 							var hooks: c.ecs_type_hooks_t = std.mem.zeroes(c.ecs_type_hooks_t);
-							const zigHooks = Hooks(Component);
 
-							if (@hasDecl(Component, "init")) {
-								hooks.ctor = &zigHooks.init;
-							}
+							if (@hasDecl(Component, "init"))
+								hooks.ctor = &EcsXTor(Component, "init").function;
+							if (@hasDecl(Component, "move"))
+								hooks.move = &EcsMove(Component).function;
+							if (@hasDecl(Component, "copy"))
+								hooks.copy = &EcsCopy(Component).function;
+							if (@hasDecl(Component, "deinit"))
+								hooks.dtor = &EcsXTor(Component, "deinit").function;
 
 							break :blk hooks;
 						},
@@ -145,19 +152,57 @@ pub const World = struct {
 	}
 };
 
-pub fn Hooks(Component: type) type {
+pub fn EcsXTor(Component: type, comptime name: []const u8) type {
 	return struct {
-		pub fn init(ptr: ?*anyopaque, count: i32, type_info: ?*const c.ecs_type_info_t) callconv(.c) void {
-			std.debug.print("Initializing component: {s}\n", .{@typeName(Component)});
+		pub fn function(ptrNullable: ?*anyopaque, count: i32, type_info: [*c]const c.ecs_type_info_t) callconv(.c) void {
 			if (builtin.mode == .Debug) {
-				if (@sizeOf(Component) != type_info.?.size)
+				if (@sizeOf(Component) != type_info[0].size)
 					@panic("Component size mismatch in init for " ++ @typeName(Component));
-				if (@alignOf(Component) != type_info.?.alignment)
+				if (@alignOf(Component) != type_info[0].alignment)
 					@panic("Component alignment mismatch in init for " ++ @typeName(Component));
 			}
-			const instances: []Component = @as([*]Component, @ptrCast(ptr.?))[0..@intCast(count)];
-			for (instances) |*instance| {
-				Component.init(instance, type_info.?);
+			if (ptrNullable) |ptr| {
+				for (@as([*]Component, @ptrCast(ptr))[0..@intCast(count)]) |*instance| {
+					@field(Component, name)(instance, type_info);
+				}
+			}
+		}
+	};
+}
+
+pub fn EcsMove(Component: type) type {
+	return struct {
+		pub fn function(dstPtrNullable: ?*anyopaque, srcPtrNullable: ?*anyopaque, count: i32, type_info: [*c]const c.ecs_type_info_t) callconv(.c) void {
+			if (builtin.mode == .Debug) {
+				if (@sizeOf(Component) != type_info[0].size)
+					@panic("Component size mismatch in init for " ++ @typeName(Component));
+				if (@alignOf(Component) != type_info[0].alignment)
+					@panic("Component alignment mismatch in init for " ++ @typeName(Component));
+			}
+			for (
+				@as([*]Component, @ptrCast(dstPtrNullable))[0..@intCast(count)],
+				@as([*]Component, @ptrCast(srcPtrNullable))[0..@intCast(count)],
+			) |*dst, *src| {
+				Component.move(dst, src, type_info);
+			}
+		}
+	};
+}
+
+pub fn EcsCopy(Component: type) type {
+	return struct {
+		pub fn function(dstPtrNullable: ?*anyopaque, srcPtrNullable: ?*const anyopaque, count: i32, type_info: [*c]const c.ecs_type_info_t) callconv(.c) void {
+			if (builtin.mode == .Debug) {
+				if (@sizeOf(Component) != type_info[0].size)
+					@panic("Component size mismatch in init for " ++ @typeName(Component));
+				if (@alignOf(Component) != type_info[0].alignment)
+					@panic("Component alignment mismatch in init for " ++ @typeName(Component));
+			}
+			for (
+				@as([*]Component, @ptrCast(dstPtrNullable))[0..@intCast(count)],
+				@as([*]const Component, @ptrCast(srcPtrNullable))[0..@intCast(count)],
+			) |*dst, src| {
+				Component.copy(dst, &src, type_info);
 			}
 		}
 	};
@@ -195,7 +240,7 @@ pub const FlecsEntity = struct {
 	}
 };
 
-test "Entity with Velocity" {
+test "Entity with Trivial Component" {
 	const world = World.init();
 	defer world.deinit();
 
@@ -213,18 +258,19 @@ test "Entity with Velocity" {
 	entity1.deinit();
 }
 
-test "Entity with test component" {
+test "Entity with TestComponentRuleOf5" {
 	const world = World.init();
 	defer world.deinit();
 
 	const entity1 = world.new();
 	try std.testing.expect(entity1.isAlive());
 
-	entity1.set(components.@"cubyz:TestComponentFull", std.mem.zeroes(components.@"cubyz:TestComponentFull"));
-	const actual = entity1.get(components.@"cubyz:TestComponentFull");
+	entity1.set(components.@"cubyz:TestComponentRuleOf5", std.mem.zeroes(components.@"cubyz:TestComponentRuleOf5"));
+	const actual = entity1.get(components.@"cubyz:TestComponentRuleOf5");
+	std.debug.print("Actual TestComponentRuleOf5: {*} {}\n", .{actual.?, actual.?.initCalled});
 
 	try std.testing.expect(actual != null);
-	// try std.testing.expect(1 == actual.?.initCalled);
+	try std.testing.expect(1 == actual.?.initCalled);
 
 	entity1.deinit();
 }
