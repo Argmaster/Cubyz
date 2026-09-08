@@ -4,7 +4,6 @@ const main = @import("main");
 const c = main.c;
 
 initCalled: u8,
-deinitCalled: u8,
 
 const Self = @This();
 
@@ -26,6 +25,5 @@ pub fn copy(dst: *Self, src: *const Self, type_info: *const c.ecs_type_info_t) c
 
 pub fn deinit(self: *Self, type_info: *const c.ecs_type_info_t) callconv(.c) void {
 	std.debug.print("Deinitializing TestComponentRuleOf5 {*}\n", .{self});
-	self.deinitCalled += 1;
 	_ = type_info;
 }

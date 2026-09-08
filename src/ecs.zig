@@ -128,6 +128,8 @@ pub const World = struct {
 								hooks.copy = &EcsCopy(Component).function;
 							if (@hasDecl(Component, "deinit"))
 								hooks.dtor = &EcsXTor(Component, "deinit").function;
+							if (@hasDecl(Component, "onSet"))
+								hooks.on_set = &EcsXTor(Component, "onSet").function;
 
 							break :blk hooks;
 						},
@@ -204,6 +206,14 @@ pub fn EcsCopy(Component: type) type {
 			) |*dst, src| {
 				Component.copy(dst, &src, type_info);
 			}
+		}
+	};
+}
+
+pub fn EcsHook(Component: type) type {
+	return struct {
+		pub fn onSet(it: [*c]c.ecs_iter_t) callconv(.c) void {
+			Component.onSet();
 		}
 	};
 }

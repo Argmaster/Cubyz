@@ -1,0 +1,1 @@
+maxEnergy: f32

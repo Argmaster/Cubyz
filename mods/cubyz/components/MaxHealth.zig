@@ -1,0 +1,1 @@
+maxHealth: f32
