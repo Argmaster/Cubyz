@@ -10,7 +10,7 @@ pub const assets = @import("assets.zig");
 pub const block_entity = @import("block_entity.zig");
 pub const blocks = @import("blocks.zig");
 pub const blueprint = @import("blueprint.zig");
-const c = @import("c");
+pub const c = @import("c");
 pub const callbacks = @import("callbacks/callbacks.zig");
 pub const chunk = @import("chunk.zig");
 pub const client = @import("client.zig");
@@ -410,19 +410,6 @@ pub fn main(args: std.process.Init.Minimal) void { // MARK: main()
 
 	const world = ecs.World.init();
 	defer world.deinit();
-
-	const entity1 = world.new();
-	std.debug.assert(entity1.isAlive());
-	std.log.debug("Entity: {s}", .{entity1.getName()});
-
-	entity1.set(ecs.components.@"cubyz:Velocity", .{.vel = .{1, 2, 3}});
-	const velocity = entity1.get(ecs.components.@"cubyz:Velocity");
-	const position = entity1.get(ecs.components.@"cubyz:Position");
-
-	std.debug.print("{}\n", .{velocity.?.vel});
-	std.debug.print("{?}\n", .{position});
-
-	entity1.deinit();
 
 	if (!headless) entity.client.init();
 	defer if (!headless) entity.client.deinit();
