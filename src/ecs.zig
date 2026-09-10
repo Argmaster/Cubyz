@@ -5,28 +5,85 @@ const main = @import("main");
 
 pub const components = @import("components");
 
+const allocationAlignmentBytes = 64;
+const allocationAlignment = std.mem.Alignment.fromByteUnits(allocationAlignmentBytes);
+const allocationHeaderSizeBytes = allocationAlignmentBytes;
+
 var wasCustomOsApiInitialized = false;
 
-const componentsMeta = blk: {
-	const componentCount = @typeInfo(components).@"struct".decls.len;
-	var componentNames: [componentCount][]const u8 = undefined;
+const ComponentIds = blk: {
+	const count = @typeInfo(components).@"struct".decls.len;
+	var names: [count][]const u8 = undefined;
 
 	for (@typeInfo(components).@"struct".decls, 0..) |declaration_info, index| {
 		const component = @field(components, declaration_info.name);
-		componentNames[index] = ecsId(component);
+		names[index] = @typeName(component);
 	}
 
-	const Meta = struct {
-		const count: usize = componentCount;
-		const names: [componentCount][]const u8 = componentNames;
-
-		const ComponentIds: type = @Struct(.@"extern", null, names[0..count], &@splat(u64), &@splat(.{}));
-	};
-	break :blk Meta;
+	break :blk @Struct(.@"extern", null, names[0..count], &@splat(u64), &@splat(.{}));
 };
 
-fn ecsId(Component: type) []const u8 {
-	return @typeName(Component);
+var componentIds: ComponentIds = undefined;
+var world: *c.ecs_world_t = undefined;
+
+pub fn init() void {
+	if (!wasCustomOsApiInitialized) initCustomOsApi();
+
+	world = c.ecs_init().?;
+
+	inline for (@typeInfo(components).@"struct".decls) |declaration_info| {
+		const Component: type = @field(components, declaration_info.name);
+		const result = c.ecs_component_init(
+			world,
+			&c.ecs_component_desc_t{
+				.entity = c.ecs_entity_init(
+					world,
+					&c.ecs_entity_desc_t{
+						.use_low_id = true,
+						.name = @typeName(Component),
+						.symbol = @typeName(Component),
+					},
+				),
+				.type = .{
+					.size = @sizeOf(Component),
+					.alignment = @alignOf(Component),
+					.hooks = blk: {
+						var hooks: c.ecs_type_hooks_t = std.mem.zeroes(c.ecs_type_hooks_t);
+
+						if (@hasDecl(Component, "init"))
+							hooks.ctor = &EcsXTor(Component, "init").function;
+						if (@hasDecl(Component, "move"))
+							hooks.move = &EcsMove(Component).function;
+						if (@hasDecl(Component, "copy"))
+							hooks.copy = &EcsCopy(Component).function;
+						if (@hasDecl(Component, "deinit"))
+							hooks.dtor = &EcsXTor(Component, "deinit").function;
+						if (@hasDecl(Component, "onSet"))
+							hooks.on_set = &EcsHooks(Component).onSet;
+						if (@hasDecl(Component, "onAdd"))
+							hooks.on_add = &EcsHooks(Component).onAdd;
+						if (@hasDecl(Component, "onRemove"))
+							hooks.on_remove = &EcsHooks(Component).onRemove;
+						if (@hasDecl(Component, "onReplace"))
+							hooks.on_replace = &EcsHooks(Component).onReplace;
+
+						break :blk hooks;
+					},
+				},
+			},
+		);
+		@field(componentIds, @typeName(Component)) = result;
+		std.log.debug("Registered component: {s} as {d}\n", .{@typeName(Component), result});
+	}
+}
+
+pub fn deinit() void {
+	const result = c.ecs_fini(world);
+	std.debug.assert(result == 0);
+}
+
+pub fn new() FlecsEntity {
+	return FlecsEntity.init(c.ecs_new(world));
 }
 
 /// We need to enforce 64 byte alignment for AVX512 SIMD operations.
@@ -45,11 +102,6 @@ fn initCustomOsApi() void {
 
 	c.ecs_os_set_api(&my_os_api);
 }
-
-const allocationAlignmentBytes = 64;
-const allocationAlignment = std.mem.Alignment.fromByteUnits(allocationAlignmentBytes);
-const allocationHeaderSizeBytes = allocationAlignmentBytes;
-
 fn custom_malloc(size: c.ecs_size_t) callconv(.c) ?*anyopaque {
 	const requestedSize: usize = @intCast(size);
 	const totalSizeBytes: usize = requestedSize + allocationHeaderSizeBytes;
@@ -90,79 +142,9 @@ fn custom_free(ptr: ?*anyopaque) callconv(.c) void {
 	main.globalAllocator.rawFree(allocation[0 .. size + allocationHeaderSizeBytes], allocationAlignment, @returnAddress());
 }
 
-pub const World = struct {
-	ecsWorld: *c.ecs_world_t,
-	/// We need to retain per-world component IDs to later use them for entities.
-	componentIds: componentsMeta.ComponentIds,
-
-	pub fn init() World {
-		if (!wasCustomOsApiInitialized) initCustomOsApi();
-
-		const world = c.ecs_init() orelse unreachable;
-		var ids: componentsMeta.ComponentIds = undefined;
-
-		inline for (@typeInfo(components).@"struct".decls) |declaration_info| {
-			const Component: type = @field(components, declaration_info.name);
-			const result = c.ecs_component_init(
-				world,
-				&c.ecs_component_desc_t{
-					.entity = c.ecs_entity_init(
-						world,
-						&c.ecs_entity_desc_t{
-							.use_low_id = true,
-							.name = @typeName(Component),
-							.symbol = @typeName(Component),
-						},
-					),
-					.type = .{
-						.size = @sizeOf(Component),
-						.alignment = @alignOf(Component),
-						.hooks = blk: {
-							var hooks: c.ecs_type_hooks_t = std.mem.zeroes(c.ecs_type_hooks_t);
-
-							if (@hasDecl(Component, "init"))
-								hooks.ctor = &EcsXTor(Component, "init").function;
-							if (@hasDecl(Component, "move"))
-								hooks.move = &EcsMove(Component).function;
-							if (@hasDecl(Component, "copy"))
-								hooks.copy = &EcsCopy(Component).function;
-							if (@hasDecl(Component, "deinit"))
-								hooks.dtor = &EcsXTor(Component, "deinit").function;
-							if (@hasDecl(Component, "onSet"))
-								hooks.on_set = &EcsXTor(Component, "onSet").function;
-
-							break :blk hooks;
-						},
-					},
-				},
-			);
-			@field(ids, ecsId(Component)) = result;
-			std.debug.assert(result != 0);
-			std.log.debug("Registered component: {s}", .{ecsId(Component)});
-		}
-		return World{
-			.ecsWorld = world,
-			.componentIds = ids,
-		};
-	}
-	pub fn deinit(self: World) void {
-		const result = c.ecs_fini(self.ecsWorld);
-		std.debug.assert(result == 0);
-	}
-	pub fn new(self: *const World) FlecsEntity {
-		return FlecsEntity.init(c.ecs_new(self.ecsWorld), self);
-	}
-};
-
 pub fn EcsXTor(Component: type, comptime name: []const u8) type {
 	return struct {
 		pub fn function(ptrNullable: ?*anyopaque, count: i32, type_info: [*c]const c.ecs_type_info_t) callconv(.c) void {
-			if (builtin.mode == .Debug) {
-				if (@sizeOf(Component) != type_info[0].size)
-					@panic("Component size mismatch in init for " ++ @typeName(Component));
-				if (@alignOf(Component) != type_info[0].alignment)
-					@panic("Component alignment mismatch in init for " ++ @typeName(Component));
-			}
 			if (ptrNullable) |ptr| {
 				for (@as([*]Component, @ptrCast(ptr))[0..@intCast(count)]) |*instance| {
 					@field(Component, name)(instance, type_info);
@@ -175,12 +157,6 @@ pub fn EcsXTor(Component: type, comptime name: []const u8) type {
 pub fn EcsMove(Component: type) type {
 	return struct {
 		pub fn function(dstPtrNullable: ?*anyopaque, srcPtrNullable: ?*anyopaque, count: i32, type_info: [*c]const c.ecs_type_info_t) callconv(.c) void {
-			if (builtin.mode == .Debug) {
-				if (@sizeOf(Component) != type_info[0].size)
-					@panic("Component size mismatch in init for " ++ @typeName(Component));
-				if (@alignOf(Component) != type_info[0].alignment)
-					@panic("Component alignment mismatch in init for " ++ @typeName(Component));
-			}
 			for (
 				@as([*]Component, @ptrCast(dstPtrNullable))[0..@intCast(count)],
 				@as([*]Component, @ptrCast(srcPtrNullable))[0..@intCast(count)],
@@ -194,12 +170,6 @@ pub fn EcsMove(Component: type) type {
 pub fn EcsCopy(Component: type) type {
 	return struct {
 		pub fn function(dstPtrNullable: ?*anyopaque, srcPtrNullable: ?*const anyopaque, count: i32, type_info: [*c]const c.ecs_type_info_t) callconv(.c) void {
-			if (builtin.mode == .Debug) {
-				if (@sizeOf(Component) != type_info[0].size)
-					@panic("Component size mismatch in init for " ++ @typeName(Component));
-				if (@alignOf(Component) != type_info[0].alignment)
-					@panic("Component alignment mismatch in init for " ++ @typeName(Component));
-			}
 			for (
 				@as([*]Component, @ptrCast(dstPtrNullable))[0..@intCast(count)],
 				@as([*]const Component, @ptrCast(srcPtrNullable))[0..@intCast(count)],
@@ -210,51 +180,97 @@ pub fn EcsCopy(Component: type) type {
 	};
 }
 
-pub fn EcsHook(Component: type) type {
+pub fn EcsHooks(Component: type) type {
 	return struct {
+		pub fn onAdd(it: [*c]c.ecs_iter_t) callconv(.c) void {
+			const iterator: *c.ecs_iter_t = @ptrCast(it);
+			const selfAnySize: [*]Component = @ptrCast(@alignCast(c.ecs_field_w_size(it, @sizeOf(Component), 0).?));
+			const selfIterator: []Component = selfAnySize[0..@intCast(iterator.count)];
+			for (selfIterator) |*self|
+				Component.onAdd(self);
+		}
 		pub fn onSet(it: [*c]c.ecs_iter_t) callconv(.c) void {
-			Component.onSet();
+			const iterator: *c.ecs_iter_t = @ptrCast(it);
+			const selfAnySize: [*]Component = @ptrCast(@alignCast(c.ecs_field_w_size(it, @sizeOf(Component), 0).?));
+			const selfIterator: []Component = selfAnySize[0..@intCast(iterator.count)];
+			for (selfIterator) |*self|
+				Component.onSet(self);
+		}
+		pub fn onRemove(it: [*c]c.ecs_iter_t) callconv(.c) void {
+			const iterator: *c.ecs_iter_t = @ptrCast(it);
+			const selfAnySize: [*]Component = @ptrCast(@alignCast(c.ecs_field_w_size(it, @sizeOf(Component), 0).?));
+			const selfIterator: []Component = selfAnySize[0..@intCast(iterator.count)];
+			for (selfIterator) |*self|
+				Component.onRemove(self);
+		}
+		pub fn onReplace(it: [*c]c.ecs_iter_t) callconv(.c) void {
+			const iterator: *c.ecs_iter_t = @ptrCast(it);
+
+			const oldAnySize: [*]const Component = @ptrCast(@alignCast(c.ecs_field_w_size(it, @sizeOf(Component), 0).?));
+			const oldIterator: []const Component = oldAnySize[0..@intCast(iterator.count)];
+
+			const newAnySize: [*]Component = @ptrCast(@alignCast(c.ecs_field_w_size(it, @sizeOf(Component), 1).?));
+			const newIterator: []Component = newAnySize[0..@intCast(iterator.count)];
+
+			for (oldIterator, newIterator) |*oldValue, *newValue|
+				Component.onReplace(oldValue, newValue);
 		}
 	};
 }
 
 pub const FlecsEntity = struct {
-	entity_handle: c.ecs_entity_t,
-	world: *const World,
+	entityId: c.ecs_entity_t,
 
-	fn init(e: c.ecs_entity_t, w: *const World) FlecsEntity {
-		return FlecsEntity{
-			.entity_handle = e,
-			.world = w,
-		};
+	fn init(e: c.ecs_entity_t) FlecsEntity {
+		return .{.entityId = e};
 	}
 	pub fn deinit(self: FlecsEntity) void {
-		c.ecs_delete(self.world.ecsWorld, self.entity_handle);
+		c.ecs_delete(world, self.entityId);
 	}
 	pub fn getName(self: FlecsEntity) [*:0]const u8 {
-		return c.ecs_get_name(self.world.ecsWorld, self.entity_handle) orelse "<unnamed>";
+		return c.ecs_get_name(world, self.entityId) orelse "<unnamed>";
 	}
 	pub fn isAlive(self: FlecsEntity) bool {
-		return c.ecs_is_alive(self.world.ecsWorld, self.entity_handle);
+		return c.ecs_is_alive(world, self.entityId);
 	}
 	pub fn get(self: FlecsEntity, Component: type) ?*const Component {
-		const componentId = @field(self.world.componentIds, ecsId(Component));
-		if (c.ecs_get_id(self.world.ecsWorld, self.entity_handle, componentId)) |result| {
+		assertAliveDebugOnly(self);
+
+		const componentId = @field(componentIds, @typeName(Component));
+		if (c.ecs_get_id(world, self.entityId, componentId)) |result| {
 			return @ptrCast(@alignCast(result));
 		}
 		return null;
 	}
+	pub fn add(self: FlecsEntity, Component: type) void {
+		assertAliveDebugOnly(self);
+
+		const componentId = @field(componentIds, @typeName(Component));
+		c.ecs_add_id(world, self.entityId, componentId);
+	}
 	pub fn set(self: FlecsEntity, Component: type, value: Component) void {
-		const componentId = @field(self.world.componentIds, ecsId(Component));
-		c.ecs_set_id(self.world.ecsWorld, self.entity_handle, componentId, @sizeOf(Component), &value);
+		assertAliveDebugOnly(self);
+
+		const componentId = @field(componentIds, @typeName(Component));
+		c.ecs_set_id(world, self.entityId, componentId, @sizeOf(Component), &value);
+	}
+	pub fn remove(self: FlecsEntity, Component: type) void {
+		assertAliveDebugOnly(self);
+
+		const componentId = @field(componentIds, @typeName(Component));
+		c.ecs_remove_id(world, self.entityId, componentId);
 	}
 };
 
-test "Entity with Trivial Component" {
-	const world = World.init();
-	defer world.deinit();
+inline fn assertAliveDebugOnly(self: FlecsEntity) void {
+	if (builtin.mode == .Debug and !self.isAlive()) @panic("Entity is not alive!");
+}
 
-	const entity1 = world.new();
+test "Entity with Trivial Component" {
+	init();
+	defer deinit();
+
+	const entity1 = new();
 	try std.testing.expect(entity1.isAlive());
 
 	const expected: components.@"cubyz:Velocity" = .{.vel = .{1, 2, 3}};
@@ -269,18 +285,40 @@ test "Entity with Trivial Component" {
 }
 
 test "Entity with TestComponentRuleOf5" {
-	const world = World.init();
-	defer world.deinit();
+	init();
+	defer deinit();
 
-	const entity1 = world.new();
+	const entity1 = new();
 	try std.testing.expect(entity1.isAlive());
 
 	entity1.set(components.@"cubyz:TestComponentRuleOf5", std.mem.zeroes(components.@"cubyz:TestComponentRuleOf5"));
 	const actual = entity1.get(components.@"cubyz:TestComponentRuleOf5");
-	std.debug.print("Actual TestComponentRuleOf5: {*} {}\n", .{actual.?, actual.?.initCalled});
 
 	try std.testing.expect(actual != null);
-	try std.testing.expect(1 == actual.?.initCalled);
+	try std.testing.expectEqual(1, actual.?.initCalled);
+	try std.testing.expectEqual(0, actual.?.moveCalled);
+	try std.testing.expectEqual(1, actual.?.copyCalled);
+
+	entity1.deinit();
+}
+
+test "Entity with component Hooks" {
+	init();
+	defer deinit();
+
+	const entity1 = new();
+	try std.testing.expect(entity1.isAlive());
+
+	entity1.add(components.@"cubyz:TestComponentHooks");
+	entity1.set(components.@"cubyz:TestComponentHooks", std.mem.zeroes(components.@"cubyz:TestComponentHooks"));
+	const actual = entity1.get(components.@"cubyz:TestComponentHooks");
+
+	try std.testing.expect(actual != null);
+
+	try std.testing.expectEqual(@intFromPtr(actual), actual.?.selfAddress);
+
+	// try std.testing.expectEqual(1, actual.?.onAddCalled);
+	try std.testing.expectEqual(1, actual.?.onSetCalled);
 
 	entity1.deinit();
 }

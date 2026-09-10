@@ -408,8 +408,8 @@ pub fn main(args: std.process.Init.Minimal) void { // MARK: main()
 	if (!headless) systems.client.init();
 	defer if (!headless) systems.client.deinit();
 
-	const world = ecs.World.init();
-	defer world.deinit();
+	ecs.init();
+	defer ecs.deinit();
 
 	if (!headless) entity.client.init();
 	defer if (!headless) entity.client.deinit();
